@@ -1,4 +1,4 @@
-"""Tests for the kgdb_resolve_gene tool + resolve service."""
+"""Tests for the resolve_gene tool + resolve service."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -60,8 +61,8 @@ async def test_resolve_tool_registered_readonly() -> None:
     mcp = _build()
     tools = await mcp.list_tools()
     by_name = {t.name: t for t in tools}
-    assert "kgdb_resolve_gene" in by_name
-    tool = by_name["kgdb_resolve_gene"]
+    assert "resolve_gene" in by_name
+    tool = by_name["resolve_gene"]
     assert tool.annotations is not None
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.idempotent_hint is True
@@ -86,7 +87,7 @@ async def test_resolve_single_envelope_and_handoff() -> None:
         "match_type": "symbol",
     }
     assert result["resolve_with"] == {
-        "tool": "kgdb_get_gene",
+        "tool": "get_gene",
         "argument": "gene_symbol",
         "value": "PKD1",
     }
@@ -101,8 +102,8 @@ async def test_resolve_tool_attaches_envelope() -> None:
     mcp = FastMCP("test")
     register(mcp, client)
     try:
-        tool = await _get_tool(mcp, "kgdb_resolve_gene")
-        out = await tool.fn(query="PKD1")
+        tool = await _get_tool(mcp, "resolve_gene")
+        out = unwrap(await tool.fn(query="PKD1"))
     finally:
         await client.aclose()
     assert out["data_class"] == dataclass.GENE_IDENTITY
@@ -135,13 +136,13 @@ async def test_resolve_tool_ambiguous_envelope() -> None:
     mcp = FastMCP("test")
     register(mcp, client)
     try:
-        tool = await _get_tool(mcp, "kgdb_resolve_gene")
-        out = await tool.fn(query="X")
+        tool = await _get_tool(mcp, "resolve_gene")
+        out = unwrap(await tool.fn(query="X"))
     finally:
         await client.aclose()
-    assert out["is_error"] is True
-    assert out["error"]["code"] == "ambiguous_query"
-    assert len(out["error"]["choices"]) == 2
+    assert out["success"] is False
+    assert out["error_code"] == "ambiguous_query"
+    assert len(out["choices"]) == 2
 
 
 async def test_resolve_empty_query_invalid_input() -> None:

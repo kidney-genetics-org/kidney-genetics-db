@@ -1,6 +1,6 @@
 """Curated-associations tool: published expert-reviewed associations (#437).
 
-Registers ``kgdb_list_curated_associations`` (``readOnlyHint``/``idempotentHint``/
+Registers ``list_curated_associations`` (``readOnlyHint``/``idempotentHint``/
 ``openWorldHint=False``). Thin: typed params, resolved response_mode, then the
 service via ``run_tool``.
 """
@@ -29,7 +29,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
     """
 
     @mcp.tool(
-        name="kgdb_list_curated_associations",
+        name="list_curated_associations",
+        output_schema=None,
         annotations={
             "title": "List Published Curated Gene-Disease Associations",
             "readOnlyHint": True,
@@ -37,7 +38,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_list_curated_associations(
+    async def list_curated_associations(
         gene_symbol: str | None = None,
         relationship_type: Literal["mendelian", "susceptibility"] | None = None,
         response_mode: ResponseMode | None = None,
@@ -74,5 +75,6 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.CURATED_ASSOCIATION,
+            client=client,
             response_mode=mode,
         )

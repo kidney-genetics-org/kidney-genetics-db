@@ -1,10 +1,11 @@
-"""Tests for the kgdb_list_curated_associations tool + curation service (#437)."""
+"""Tests for the list_curated_associations tool + curation service (#437)."""
 
 from __future__ import annotations
 
 import httpx
 import pytest
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.allowlist import is_allowed
@@ -70,7 +71,7 @@ async def test_registers_with_readonly_hints_and_scope_note() -> None:
     mcp: FastMCP = FastMCP("test")  # type: ignore[type-arg]
     register(mcp, None)
     tool = next(
-        t for t in await mcp.list_tools() if t.name == "kgdb_list_curated_associations"
+        t for t in await mcp.list_tools() if t.name == "list_curated_associations"
     )
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.idempotent_hint is True
@@ -87,12 +88,12 @@ async def test_filters_by_relationship_type_and_forwards_gene() -> None:
     )
     mcp, client = _make()
     r = await mcp.call_tool(
-        "kgdb_list_curated_associations",
+        "list_curated_associations",
         {"gene_symbol": "CFI", "relationship_type": "susceptibility"},
     )
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     assert sc["data_class"] == CURATED_ASSOCIATION
     assert [a["gene_symbol"] for a in sc["associations"]] == ["CFI"]
     assert "gene_symbol=CFI" in str(route.calls.last.request.url)
@@ -106,14 +107,18 @@ async def test_minimal_omits_diagnostics_full_keeps_them() -> None:
         )
     )
     mcp, client = _make()
-    minimal = (
-        await mcp.call_tool(
-            "kgdb_list_curated_associations", {"response_mode": "minimal"}
-        )
-    ).structured_content
-    full = (
-        await mcp.call_tool("kgdb_list_curated_associations", {"response_mode": "full"})
-    ).structured_content
+    minimal = unwrap(
+        (
+            await mcp.call_tool(
+                "list_curated_associations", {"response_mode": "minimal"}
+            )
+        ).structured_content
+    )
+    full = unwrap(
+        (
+            await mcp.call_tool("list_curated_associations", {"response_mode": "full"})
+        ).structured_content
+    )
     await client.aclose()
 
     assert set(minimal["associations"][0]) == {

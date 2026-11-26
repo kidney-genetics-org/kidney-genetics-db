@@ -2,7 +2,7 @@
 
 ``search_genes`` browses ``GET /api/genes/`` with bracket-style JSON:API filter /
 sort / pagination params and returns a list of shaped hits (field-laddered per
-response mode), each carrying a ``resolve_with`` handoff to ``kgdb_get_gene``.
+response mode), each carrying a ``resolve_with`` handoff to ``get_gene``.
 ``get_gene`` fetches ``GET /api/genes/{symbol}`` and returns the score / tier /
 group / source-score detail, field-laddered per response mode.
 """
@@ -21,10 +21,11 @@ from ..contract import (
     GENES_BY_GENE_SYMBOL,
 )
 from .errors import invalid_input
+from .resolve import symbol_for
 from .shaping import apply_budget, project_fields
 
 # The detail tool each search hit hands off to.
-_RESOLVE_WITH_TOOL = "kgdb_get_gene"
+_RESOLVE_WITH_TOOL = "get_gene"
 
 _VALID_TIER = frozenset(EVIDENCE_TIER_VALUES)
 _VALID_GROUP = frozenset(EVIDENCE_GROUP_VALUES)
@@ -96,10 +97,10 @@ def _validate_enum(value: str | None, valid: frozenset[str], field: str) -> None
     """
     if value is not None and value not in valid:
         raise invalid_input(
-            f"invalid value {value!r} for {field!r}",
+            "invalid parameter value; use one of allowed_values",
             field=field,
-            allowed=sorted(valid),
-            hint=f"use one of the allowed values for {field!r}",
+            allowed_values=sorted(valid),
+            hint="use one of allowed_values",
         )
 
 
@@ -125,7 +126,7 @@ def _shape_hit(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_with(symbol: str | None) -> dict[str, Any]:
-    """Build the per-hit handoff descriptor pointing at ``kgdb_get_gene``.
+    """Build the per-hit handoff descriptor pointing at ``get_gene``.
 
     Args:
         symbol: The hit's approved symbol (the argument the detail tool takes).
@@ -192,7 +193,7 @@ async def search_genes(
     (``filter[search]``/``filter[tier]``/``filter[group]``/``filter[min_score]``/
     ``filter[max_score]``/``filter[source]``/``sort``/``page[number]``/
     ``page[size]``). Each returned hit carries an explicit ``resolve_with``
-    handoff to ``kgdb_get_gene``.
+    handoff to ``get_gene``.
 
     Args:
         client: Authenticated :class:`ApiClient` instance.
@@ -219,7 +220,7 @@ async def search_genes(
 
     Raises:
         McpToolError: ``invalid_input`` for an out-of-vocabulary tier/group/sort
-            value; ``temporarily_unavailable`` / ``not_found`` propagated from
+            value; ``upstream_unavailable`` / ``not_found`` propagated from
             the client.
     """
     _validate_enum(tier, _VALID_TIER, "tier")
@@ -263,7 +264,7 @@ async def search_genes(
         "pagination": _pagination_meta(meta, page, page_size),
         "guidance": (
             "Each hit carries a 'resolve_with' object naming the tool and argument"
-            " (kgdb_get_gene / gene_symbol) to fetch its full record — call it"
+            " (get_gene / gene_symbol) to fetch its full record — call it"
             " verbatim."
         ),
     }
@@ -305,9 +306,10 @@ async def get_gene(
 
     Raises:
         McpToolError: ``not_found`` (re-raised richly with the offending symbol)
-            when no gene matches; ``temporarily_unavailable`` on upstream
+            when no gene matches; ``upstream_unavailable`` on upstream
             errors.
     """
+    gene_symbol, resolved_from = await symbol_for(client, gene_symbol)
     raw: dict[str, Any] = await client.get(
         GENES_BY_GENE_SYMBOL.format(gene_symbol=gene_symbol)
     )
@@ -338,4 +340,6 @@ async def get_gene(
         keep = set(fields) | set(_DETAIL_ALWAYS) | {"uri"}
         projected = {k: v for k, v in projected.items() if k in keep}
 
+    if resolved_from:
+        projected["resolved_from"] = resolved_from
     return projected

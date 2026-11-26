@@ -23,7 +23,7 @@ from typing import Any
 
 #: Heavy tools that carry a smaller per-tool burst budget.
 HEAVY_TOOLS: frozenset[str] = frozenset(
-    {"kgdb_get_interaction_partners", "kgdb_get_database_stats"}
+    {"get_interaction_partners", "get_database_stats"}
 )
 
 #: Default per-tool budgets (tokens refilled continuously). Deliberately
@@ -203,7 +203,7 @@ class RateLimiter:
 
         Returns:
             ``True`` when allowed, ``False`` when it should be rejected with a
-            ``temporarily_unavailable`` error.
+            ``upstream_unavailable`` error.
         """
         if not await self._allow_global():
             return False

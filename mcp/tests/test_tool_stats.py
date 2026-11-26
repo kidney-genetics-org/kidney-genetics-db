@@ -1,13 +1,14 @@
-"""Tests for the kgdb_get_database_stats tool + statistics service."""
+"""Tests for the get_database_stats tool + statistics service."""
 
 from __future__ import annotations
 
 import httpx
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
-from kidney_genetics_mcp.server import ErrorEnvelopeMiddleware
+from kidney_genetics_mcp.server import EnvelopeMiddleware
 from kidney_genetics_mcp.services.dataclass import STATISTICS
 from kidney_genetics_mcp.tools.statistics import register
 
@@ -61,7 +62,7 @@ async def test_registers_with_readonly_hints() -> None:
     mcp: FastMCP = FastMCP("test")  # type: ignore[type-arg]
     register(mcp, None)
     tools = await mcp.list_tools()
-    tool = next(t for t in tools if t.name == "kgdb_get_database_stats")
+    tool = next(t for t in tools if t.name == "get_database_stats")
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.idempotent_hint is True
     assert tool.annotations.open_world_hint is False
@@ -72,10 +73,10 @@ async def test_registers_with_readonly_hints() -> None:
 async def test_compact_envelope_and_projection() -> None:
     respx.get(SUMMARY).mock(return_value=httpx.Response(200, json=_SUMMARY_RESPONSE))
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_database_stats", {})
+    r = await mcp.call_tool("get_database_stats", {})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     assert sc["data_class"] == STATISTICS
     assert sc["meta"]["response_mode"] == "compact"
     # compact = overview + quality, NO coverage / pairwise_overlaps
@@ -89,10 +90,10 @@ async def test_compact_envelope_and_projection() -> None:
 async def test_minimal_only_overview() -> None:
     respx.get(SUMMARY).mock(return_value=httpx.Response(200, json=_SUMMARY_RESPONSE))
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_database_stats", {"response_mode": "minimal"})
+    r = await mcp.call_tool("get_database_stats", {"response_mode": "minimal"})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     assert "overview" in sc
     assert "quality" not in sc
     assert "coverage" not in sc
@@ -103,10 +104,10 @@ async def test_minimal_only_overview() -> None:
 async def test_full_includes_coverage_and_overlaps_sampled() -> None:
     respx.get(SUMMARY).mock(return_value=httpx.Response(200, json=_SUMMARY_RESPONSE))
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_database_stats", {"response_mode": "full"})
+    r = await mcp.call_tool("get_database_stats", {"response_mode": "full"})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     assert sc["coverage"]["single_source_genes"] == 3000
     # 15 overlaps > sample size 10 -> capped + meta signal
     assert len(sc["pairwise_overlaps"]) == 10
@@ -117,16 +118,16 @@ async def test_full_includes_coverage_and_overlaps_sampled() -> None:
 
 async def test_invalid_response_mode_rejected() -> None:
     # response_mode is a Literal, so FastMCP rejects an out-of-enum value before the
-    # handler runs; the server's ErrorEnvelopeMiddleware turns that into the
+    # handler runs; the server's EnvelopeMiddleware turns that into the
     # invalid_input envelope (FastMCP >= 3.4.10 wraps the pydantic error).
     mcp, client = _make()
-    mcp.add_middleware(ErrorEnvelopeMiddleware())
-    result = await mcp.call_tool("kgdb_get_database_stats", {"response_mode": "huge"})
-    envelope = result.structured_content
+    mcp.add_middleware(EnvelopeMiddleware())
+    result = await mcp.call_tool("get_database_stats", {"response_mode": "huge"})
+    envelope = unwrap(result.structured_content)
     assert envelope is not None
-    assert envelope["is_error"] is True
-    assert envelope["error"]["code"] == "invalid_input"
-    assert envelope["error"]["field"] == "response_mode"
+    assert envelope["success"] is False
+    assert envelope["error_code"] == "invalid_input"
+    assert envelope["field"] == "response_mode"
     await client.aclose()
 
 
@@ -134,9 +135,9 @@ async def test_invalid_response_mode_rejected() -> None:
 async def test_upstream_error_mapped() -> None:
     respx.get(SUMMARY).mock(return_value=httpx.Response(500))
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_database_stats", {})
+    r = await mcp.call_tool("get_database_stats", {})
     await client.aclose()
 
-    sc = r.structured_content
-    assert sc.get("is_error") is True
-    assert sc["error"]["code"] == "temporarily_unavailable"
+    sc = unwrap(r.structured_content)
+    assert sc.get("success") is False
+    assert sc["error_code"] == "upstream_unavailable"

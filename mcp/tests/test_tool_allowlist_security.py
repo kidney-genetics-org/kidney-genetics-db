@@ -20,18 +20,18 @@ from kidney_genetics_mcp.server import build_app
 # fails on *any* addition, removal, or rename.
 EXPECTED_TOOLS: frozenset[str] = frozenset(
     {
-        "kgdb_get_capabilities",
-        "kgdb_resolve_gene",
-        "kgdb_search_genes",
-        "kgdb_get_gene",
-        "kgdb_get_gene_evidence",
-        "kgdb_get_gene_annotations",
-        "kgdb_get_constraint_summary",
-        "kgdb_get_interaction_partners",
-        "kgdb_get_database_stats",
-        "kgdb_list_sources",
-        "kgdb_get_release_citation",
-        "kgdb_list_curated_associations",
+        "get_capabilities",
+        "resolve_gene",
+        "search_genes",
+        "get_gene",
+        "get_gene_evidence",
+        "get_gene_annotations",
+        "get_constraint_summary",
+        "get_interaction_partners",
+        "get_database_stats",
+        "list_sources",
+        "get_release_citation",
+        "list_curated_associations",
     }
 )
 

@@ -33,7 +33,7 @@ _TOOL_GUIDE_URI = "kidney-genetics://schema/tool-guide"
 #: Inventory of the 11 v1 tools: name + one-line summary for orientation.
 _TOOLS: list[dict[str, str]] = [
     {
-        "name": "kgdb_get_capabilities",
+        "name": "get_capabilities",
         "summary": (
             "Server-local orientation: tool inventory, filterable-field enums, "
             "payload modes, limits, identifiers, citation contract, error "
@@ -42,7 +42,7 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_resolve_gene",
+        "name": "resolve_gene",
         "summary": (
             "Resolve free text or any supported ID (HGNC, Ensembl, NCBI, "
             "UniProt, approved symbol, alias) to a canonical gene identity "
@@ -51,7 +51,7 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_search_genes",
+        "name": "search_genes",
         "summary": (
             "Filtered, paginated gene search by free-text query, evidence "
             "tier/group, score and source-count ranges, and contributing "
@@ -60,7 +60,7 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_get_gene",
+        "name": "get_gene",
         "summary": (
             "Gene overview by approved symbol: aggregate percentage score, "
             "evidence_tier, evidence_group, contributing sources, "
@@ -68,7 +68,7 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_get_gene_evidence",
+        "name": "get_gene_evidence",
         "summary": (
             "Per-source SCORED evidence (the 7 evidence sources) for a gene, "
             "optionally filtered by sources. Each record carries source_name, "
@@ -77,22 +77,22 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_get_gene_annotations",
+        "name": "get_gene_annotations",
         "summary": (
             "Descriptive (non-scored) annotations (the 10 annotation sources) "
             "for a gene by KGDB gene_id, optionally filtered by source. "
-            "gene_id is obtained via kgdb_resolve_gene / kgdb_search_genes."
+            "gene_id is obtained via resolve_gene / search_genes."
         ),
     },
     {
-        "name": "kgdb_get_constraint_summary",
+        "name": "get_constraint_summary",
         "summary": (
             "Fast constraint view by gene_id: gnomAD pLI / oe_lof plus NCBI, "
             "Ensembl, and MANE identifiers, without the full annotation payload."
         ),
     },
     {
-        "name": "kgdb_get_interaction_partners",
+        "name": "get_interaction_partners",
         "summary": (
             "STRING-PPI ranked interaction partners for a gene by gene_id, from "
             "local data only (no live external call, no heavy graph build). "
@@ -100,14 +100,14 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_get_database_stats",
+        "name": "get_database_stats",
         "summary": (
             "Database-wide rollup: totals, annotation coverage, quality "
             "metrics, and source-overlap statistics."
         ),
     },
     {
-        "name": "kgdb_list_sources",
+        "name": "list_sources",
         "summary": (
             "The 17 data sources (7 scored evidence + 10 descriptive "
             "annotation): display_name, version, url, last_update, and record "
@@ -115,7 +115,7 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_get_release_citation",
+        "name": "get_release_citation",
         "summary": (
             "Current published data release: version (CalVer), dataset DOI, "
             "citation_text, and checksum, plus the software concept DOI "
@@ -123,7 +123,7 @@ _TOOLS: list[dict[str, str]] = [
         ),
     },
     {
-        "name": "kgdb_list_curated_associations",
+        "name": "list_curated_associations",
         "summary": (
             "Published expert-reviewed gene-disease associations (Mendelian or "
             "susceptibility): MOI, methodology, provenance, diagnostics. Not part "
@@ -136,29 +136,29 @@ _TOOLS: list[dict[str, str]] = [
 _CANONICAL_WORKFLOWS: list[str] = [
     (
         "Gene deep-dive: "
-        "kgdb_resolve_gene(query=...) → kgdb_get_gene(gene_symbol=...) → "
-        "kgdb_get_gene_evidence(gene_symbol=...) / "
-        "kgdb_get_gene_annotations(gene_id=...) → kgdb_get_release_citation()"
+        "resolve_gene(query=...) → get_gene(gene_symbol=...) → "
+        "get_gene_evidence(gene_symbol=...) / "
+        "get_gene_annotations(gene_id=...) → get_release_citation()"
     ),
     (
         "Filtered discovery: "
-        "kgdb_search_genes(query=..., tier=..., group=..., min_score=...) → "
-        "kgdb_get_gene(gene_symbol=...) for each hit"
+        "search_genes(query=..., tier=..., group=..., min_score=...) → "
+        "get_gene(gene_symbol=...) for each hit"
     ),
     (
         "Constraint at a glance: "
-        "kgdb_resolve_gene(query=...) → "
-        "kgdb_get_constraint_summary(gene_id=...)"
+        "resolve_gene(query=...) → "
+        "get_constraint_summary(gene_id=...)"
     ),
     (
         "Interaction network (local STRING-PPI): "
-        "kgdb_resolve_gene(query=...) → "
-        "kgdb_get_interaction_partners(gene_id=..., min_string_score=...)"
+        "resolve_gene(query=...) → "
+        "get_interaction_partners(gene_id=..., min_string_score=...)"
     ),
     (
         "Provenance + citation: "
-        "kgdb_list_sources() (per-source version) → "
-        "kgdb_get_release_citation() (data-release version + DOI + concept DOI)"
+        "list_sources() (per-source version) → "
+        "get_release_citation() (data-release version + DOI + concept DOI)"
     ),
 ]
 
@@ -174,22 +174,20 @@ _LIMITS: dict[str, int] = {
 _IDENTIFIERS: dict[str, str] = {
     "hgnc_id": (
         "Canonical HGNC anchor, e.g. 'HGNC:12614'. Returned by "
-        "kgdb_resolve_gene / kgdb_search_genes; accepted by kgdb_resolve_gene."
+        "resolve_gene / search_genes; accepted by resolve_gene."
     ),
     "approved_symbol": (
         "HGNC-approved gene symbol, e.g. 'PKD1'. Used as gene_symbol by "
-        "kgdb_get_gene and kgdb_get_gene_evidence."
+        "get_gene and get_gene_evidence."
     ),
     "gene_id": (
-        "KGDB internal numeric gene id. Required by kgdb_get_gene_annotations, "
-        "kgdb_get_constraint_summary, and kgdb_get_interaction_partners. "
-        "Obtain it from kgdb_resolve_gene / kgdb_search_genes — do not guess."
+        "KGDB internal numeric gene id. Required by get_gene_annotations, "
+        "get_constraint_summary, and get_interaction_partners. "
+        "Obtain it from resolve_gene / search_genes — do not guess."
     ),
-    "ensembl": (
-        "Ensembl gene id, e.g. 'ENSG00000008710'. Accepted by kgdb_resolve_gene."
-    ),
-    "ncbi": "NCBI/Entrez gene id (bare digits). Accepted by kgdb_resolve_gene.",
-    "uniprot": "UniProt accession, e.g. 'P98161'. Accepted by kgdb_resolve_gene.",
+    "ensembl": ("Ensembl gene id, e.g. 'ENSG00000008710'. Accepted by resolve_gene."),
+    "ncbi": "NCBI/Entrez gene id (bare digits). Accepted by resolve_gene.",
+    "uniprot": "UniProt accession, e.g. 'P98161'. Accepted by resolve_gene.",
 }
 
 #: Plain-language pagination contract.
@@ -205,9 +203,9 @@ _PAGINATION_SEMANTICS: str = (
 _CITATION_CONTRACT: str = (
     "Cite every factual claim derived from a record with THREE things: (1) "
     "per-source provenance — the source display name and version from "
-    "kgdb_list_sources / the AnnotationSource registry; (2) the current "
+    "list_sources / the AnnotationSource registry; (2) the current "
     "data-release version (CalVer) and its dataset DOI from "
-    "kgdb_get_release_citation; and (3) the software concept DOI "
+    "get_release_citation; and (3) the software concept DOI "
     f"{CONCEPT_DOI} (always resolves to the latest software archive). Paste any "
     "recommended_citation / citation_text value VERBATIM — do not paraphrase or "
     "fabricate it. Citations are date-confidence gated: when a publication date "
@@ -220,18 +218,18 @@ _ERROR_CODES: dict[str, dict[str, str]] = {
     "invalid_input": {
         "meaning": (
             "A parameter is missing, malformed, or out of range. Carries "
-            "field / allowed / hint so the call can be fixed in one shot."
+            "field / allowed_values / hint so the call can be fixed in one shot."
         ),
         "example": (
-            "kgdb_search_genes(tier='strong') → invalid_input "
+            "search_genes(tier='strong') → invalid_input "
             "(field='tier'); pick a value from filterable_fields.tier."
         ),
     },
     "not_found": {
         "meaning": "The requested gene or record does not exist.",
         "example": (
-            "kgdb_get_gene(gene_symbol='NOTAREALGENE') → not_found; "
-            "re-resolve via kgdb_resolve_gene."
+            "get_gene(gene_symbol='NOTAREALGENE') → not_found; "
+            "re-resolve via resolve_gene."
         ),
     },
     "ambiguous_query": {
@@ -239,16 +237,24 @@ _ERROR_CODES: dict[str, dict[str, str]] = {
             "The query matched multiple records; carries choices to disambiguate."
         ),
         "example": (
-            "kgdb_resolve_gene(query='CAD') → ambiguous_query with choices; "
+            "resolve_gene(query='CAD') → ambiguous_query with choices; "
             "pick one and re-call."
         ),
     },
-    "temporarily_unavailable": {
-        "meaning": "The upstream API is unreachable or the rate limit is hit.",
+    "upstream_unavailable": {
+        "meaning": "The upstream API is unreachable or failed (retryable).",
         "example": (
-            "any tool during a backend outage → temporarily_unavailable; "
+            "any tool during a backend outage → upstream_unavailable; "
             "retry after a short delay."
         ),
+    },
+    "rate_limited": {
+        "meaning": "The server's request budget is exhausted (retryable).",
+        "example": "a burst of calls → rate_limited; retry after a short delay.",
+    },
+    "internal": {
+        "meaning": "An unexpected server error; the request was not completed.",
+        "example": "a server bug → internal; report it or try another tool.",
     },
 }
 
@@ -273,10 +279,10 @@ _DATA_CLASSES: dict[str, str] = {
 
 #: Capabilities deferred to v1.1 / out of scope, advertised as not-yet-available.
 _EXCLUSIONS: list[str] = [
-    "heavy network graph build/cluster tools (kgdb_build_network, "
-    "kgdb_cluster_network) — not yet available (deferred to v1.1); use "
-    "kgdb_get_interaction_partners for local STRING-PPI",
-    "GO / pathway enrichment (e.g. Enrichr, kgdb_enrich_go) — not yet "
+    "heavy network graph build/cluster tools (build_network, "
+    "cluster_network) — not yet available (deferred to v1.1); use "
+    "get_interaction_partners for local STRING-PPI",
+    "GO / pathway enrichment (e.g. Enrichr, enrich_go) — not yet "
     "available; it would require a live external provider call",
     "write operations (create, update, delete records)",
     "admin, authentication, pipeline, and staging surfaces",
@@ -314,7 +320,7 @@ def _filterable_fields() -> dict[str, Any]:
         A mapping of tool name -> {param -> {values/type, hint, ...}}.
     """
     return {
-        "kgdb_search_genes": {
+        "search_genes": {
             "query": {
                 "type": "string",
                 "hint": "free-text gene search (mapped to filter[search])",
@@ -363,7 +369,7 @@ def _filterable_fields() -> dict[str, Any]:
                 "hint": "page size; bounded by limits.genes_page_size_max",
             },
         },
-        "kgdb_get_gene_evidence": {
+        "get_gene_evidence": {
             "sources": {
                 "type": "list[string]",
                 "values": list(EVIDENCE_SOURCE_VALUES),
@@ -373,7 +379,7 @@ def _filterable_fields() -> dict[str, Any]:
                 ),
             },
         },
-        "kgdb_get_gene_annotations": {
+        "get_gene_annotations": {
             "source": {
                 "values": list(ANNOTATION_SOURCE_VALUES),
                 "hint": (
@@ -382,7 +388,7 @@ def _filterable_fields() -> dict[str, Any]:
                 ),
             },
         },
-        "kgdb_get_interaction_partners": {
+        "get_interaction_partners": {
             "min_string_score": {
                 "type": "number",
                 "hint": "minimum STRING combined score (0-1000) for a partner",

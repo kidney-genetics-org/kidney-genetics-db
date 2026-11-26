@@ -1,6 +1,6 @@
 [project]
 name = "kidney-genetics-mcp"
-version = "0.1.7"
+dynamic = ["version"]
 description = "Read-only MCP server exposing Kidney-Genetics-DB public data to LLMs"
 requires-python = ">=3.11"
 dependencies = [
@@ -17,6 +17,10 @@ kidney-genetics-mcp = "kidney_genetics_mcp.server:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# Single source of serverInfo.version, /health and the package version.
+path = "src/kidney_genetics_mcp/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kidney_genetics_mcp"]

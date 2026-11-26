@@ -15,6 +15,7 @@ from typing import Any
 from ..client.api_client import ApiClient
 from ..config import Settings
 from ..contract import GENES_BY_GENE_SYMBOL_EVIDENCE
+from .resolve import symbol_for
 from .shaping import apply_budget, sample_with_signal
 
 # Per-mode field ladder for one evidence record. ``evidence_data`` (the bulky
@@ -96,8 +97,9 @@ async def get_gene_evidence(
 
     Raises:
         McpToolError: ``not_found`` when the gene does not exist;
-            ``temporarily_unavailable`` on upstream errors.
+            ``upstream_unavailable`` on upstream errors.
     """
+    gene_symbol, resolved_from = await symbol_for(client, gene_symbol)
     raw: dict[str, Any] = await client.get(
         GENES_BY_GENE_SYMBOL_EVIDENCE.format(gene_symbol=gene_symbol)
     )
@@ -128,6 +130,8 @@ async def get_gene_evidence(
         "evidence": sampled,
         "evidence_count": evidence_count,
     }
+    if resolved_from:
+        result["resolved_from"] = resolved_from
     if signal:
         result["_meta"] = signal
 

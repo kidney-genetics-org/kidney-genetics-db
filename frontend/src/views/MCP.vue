@@ -119,7 +119,7 @@
         <h2 id="mcp-start" class="mb-2 text-xl font-semibold tracking-tight">Start here</h2>
         <p class="mb-3 max-w-[70ch] text-muted-foreground">
           Once connected, ask your agent to call
-          <code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">kgdb_get_capabilities</code>
+          <code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">get_capabilities</code>
           first; it lists every tool and how to use it. Then resolve a gene and explore its
           evidence, for example:
         </p>

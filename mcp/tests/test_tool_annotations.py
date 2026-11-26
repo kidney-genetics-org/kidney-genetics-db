@@ -1,9 +1,10 @@
-"""Tests for the kgdb_get_gene_annotations tool (registration + behavior)."""
+"""Tests for the get_gene_annotations tool (registration + behavior)."""
 
 from __future__ import annotations
 
 import httpx
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -57,7 +58,7 @@ async def test_registers_with_readonly_hints() -> None:
     mcp = FastMCP("test")
     register(mcp, None)
     tools = await mcp.list_tools()
-    t = next(t for t in tools if t.name == "kgdb_get_gene_annotations")
+    t = next(t for t in tools if t.name == "get_gene_annotations")
     assert t.annotations.read_only_hint is True
     assert t.annotations.idempotent_hint is True
     assert t.annotations.open_world_hint is False
@@ -68,7 +69,7 @@ async def test_registers_with_client_none() -> None:
     mcp = FastMCP("test")
     register(mcp, None)
     names = [t.name for t in await mcp.list_tools()]
-    assert "kgdb_get_gene_annotations" in names
+    assert "get_gene_annotations" in names
 
 
 # --------------------------------------------------------------------------- #
@@ -83,8 +84,8 @@ async def test_compact_returns_summary_not_full_data() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_gene_annotations", {"gene_id": GENE_ID})
-        sc = r.structured_content
+        r = await mcp.call_tool("get_gene_annotations", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
         assert sc["data_class"] == ANNOTATION
         assert sc["gene"] == GENE_BLOCK
         assert sc["meta"]["response_mode"] == "compact"
@@ -107,10 +108,10 @@ async def test_minimal_returns_only_versions() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_gene_annotations",
+            "get_gene_annotations",
             {"gene_id": GENE_ID, "response_mode": "minimal"},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
         hgnc = sc["annotations"]["hgnc"][0]
         assert hgnc == {"version": "2024-01"}
     finally:
@@ -125,10 +126,10 @@ async def test_standard_includes_full_data_blob() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_gene_annotations",
+            "get_gene_annotations",
             {"gene_id": GENE_ID, "response_mode": "standard"},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
         hgnc = sc["annotations"]["hgnc"][0]
         assert hgnc["data"]["name"] == "polycystin 1"
         assert "metadata" not in hgnc  # metadata only in full
@@ -144,10 +145,10 @@ async def test_full_returns_everything() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_gene_annotations",
+            "get_gene_annotations",
             {"gene_id": GENE_ID, "response_mode": "full"},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
         hgnc = sc["annotations"]["hgnc"][0]
         assert hgnc["metadata"] == {"source_url": "http://example.test/hgnc"}
         assert hgnc["data"]["extra_blob"]
@@ -171,10 +172,10 @@ async def test_source_filter_forwarded_as_query_param() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_gene_annotations",
+            "get_gene_annotations",
             {"gene_id": GENE_ID, "source": "gnomad"},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
         assert route.called
         assert set(sc["annotations"].keys()) == {"gnomad"}
     finally:
@@ -201,7 +202,7 @@ async def test_service_rejects_unknown_source() -> None:
         except McpToolError as exc:
             assert exc.code == "invalid_input"
             assert exc.details["field"] == "source"
-            assert exc.details["allowed"] is not None
+            assert exc.details["allowed_values"] is not None
         else:  # pragma: no cover — should not reach here
             raise AssertionError("expected invalid_input for unknown source")
     finally:
@@ -215,10 +216,10 @@ async def test_not_found_propagates_error_envelope() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_gene_annotations", {"gene_id": GENE_ID})
-        sc = r.structured_content
-        assert sc.get("is_error") is True
-        assert sc["error"]["code"] == "not_found"
+        r = await mcp.call_tool("get_gene_annotations", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
+        assert sc.get("success") is False
+        assert sc["error_code"] == "not_found"
         assert "meta" not in sc
     finally:
         await client.aclose()
@@ -246,10 +247,10 @@ async def test_budget_trims_oversized_annotation_lists() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_gene_annotations",
+            "get_gene_annotations",
             {"gene_id": GENE_ID, "response_mode": "compact"},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
         assert sc["meta"]["truncated"] is True
         assert sc["meta"]["dropped_summary"]["dropped_records"] > 0
         # never empty when a match exists

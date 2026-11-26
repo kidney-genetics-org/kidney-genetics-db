@@ -44,7 +44,7 @@ def resolve_mode(requested: str | None) -> str:
             "invalid_input",
             f"response_mode must be one of {MODES}",
             field="response_mode",
-            allowed=list(MODES),
+            allowed_values=list(MODES),
         )
     return requested
 

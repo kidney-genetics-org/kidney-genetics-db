@@ -1,9 +1,10 @@
-"""Tests for the kgdb_list_sources tool + sources merge service."""
+"""Tests for the list_sources tool + sources merge service."""
 
 from __future__ import annotations
 
 import httpx
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -106,7 +107,7 @@ async def test_registers_with_readonly_hints() -> None:
     mcp: FastMCP = FastMCP("test")  # type: ignore[type-arg]
     register(mcp, None)
     tools = await mcp.list_tools()
-    tool = next(t for t in tools if t.name == "kgdb_list_sources")
+    tool = next(t for t in tools if t.name == "list_sources")
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.idempotent_hint is True
     assert tool.annotations.open_world_hint is False
@@ -116,10 +117,10 @@ async def test_registers_with_readonly_hints() -> None:
 async def test_merge_and_envelope() -> None:
     _mock_both()
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_list_sources", {"response_mode": "standard"})
+    r = await mcp.call_tool("list_sources", {"response_mode": "standard"})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     assert sc["data_class"] == SOURCE
     assert sc["meta"]["response_mode"] == "standard"
     # 2 annotation sources + 1 datasource-only (PanelApp) = 3 merged records
@@ -142,10 +143,10 @@ async def test_merge_and_envelope() -> None:
 async def test_minimal_projection_drops_url_and_counts() -> None:
     _mock_both()
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_list_sources", {"response_mode": "minimal"})
+    r = await mcp.call_tool("list_sources", {"response_mode": "minimal"})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     hgnc = next(s for s in sc["sources"] if s["source_name"] == "HGNC")
     assert set(hgnc.keys()) == {"source_name", "display_name", "version"}
 
@@ -154,10 +155,10 @@ async def test_minimal_projection_drops_url_and_counts() -> None:
 async def test_default_mode_is_compact() -> None:
     _mock_both()
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_list_sources", {})
+    r = await mcp.call_tool("list_sources", {})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     assert sc["meta"]["response_mode"] == "compact"
     hgnc = next(s for s in sc["sources"] if s["source_name"] == "HGNC")
     # compact = name, display_name, version, url, last_update (no counts)
@@ -173,9 +174,9 @@ async def test_upstream_error_mapped() -> None:
         return_value=httpx.Response(200, json=_DATASOURCES_RESPONSE)
     )
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_list_sources", {})
+    r = await mcp.call_tool("list_sources", {})
     await client.aclose()
 
-    sc = r.structured_content
-    assert sc.get("is_error") is True
-    assert sc["error"]["code"] == "temporarily_unavailable"
+    sc = unwrap(r.structured_content)
+    assert sc.get("success") is False
+    assert sc["error_code"] == "upstream_unavailable"

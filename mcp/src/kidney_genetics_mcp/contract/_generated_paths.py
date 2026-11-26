@@ -23,6 +23,7 @@ ANNOTATIONS_SOURCES = "/api/annotations/sources"
 STATISTICS_SUMMARY = "/api/statistics/summary"
 DATASOURCES = "/api/datasources/"
 RELEASES = "/api/releases/"
+VERSION = "/version"
 
 ALL_PATHS: tuple[str, ...] = (
     GENES,
@@ -35,4 +36,5 @@ ALL_PATHS: tuple[str, ...] = (
     STATISTICS_SUMMARY,
     DATASOURCES,
     RELEASES,
+    VERSION,
 )

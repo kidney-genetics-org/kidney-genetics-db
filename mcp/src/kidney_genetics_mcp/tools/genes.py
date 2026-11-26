@@ -1,7 +1,7 @@
 """Gene-family MCP tools.
 
-Registers ``kgdb_resolve_gene``, ``kgdb_search_genes``, ``kgdb_get_gene``, and
-``kgdb_get_gene_evidence``. Each tool is thin: it declares typed params + a
+Registers ``resolve_gene``, ``search_genes``, ``get_gene``, and
+``get_gene_evidence``. Each tool is thin: it declares typed params + a
 docstring, validates/normalizes the response mode, and delegates to its service
 via :func:`~kidney_genetics_mcp.services.safe_tool.run_tool`, which attaches the
 uniform ``data_class`` + ``meta`` envelope (or an error envelope).
@@ -9,9 +9,10 @@ uniform ``data_class`` + ``meta`` envelope (or an error envelope).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from pydantic import Field
 
 from kidney_genetics_mcp.client.api_client import ApiClient
 from kidney_genetics_mcp.contract import EvidenceGroup, EvidenceTier, GeneSortField
@@ -34,7 +35,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
     """
 
     @mcp.tool(
-        name="kgdb_resolve_gene",
+        name="resolve_gene",
+        output_schema=None,
         annotations={
             "title": "Resolve Gene (free-text/ID → canonical identity)",
             "readOnlyHint": True,
@@ -42,8 +44,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_resolve_gene(
-        query: str,
+    async def resolve_gene(
+        query: Annotated[str, Field(examples=["PKD1", "HGNC:9008"])],
         response_mode: ResponseMode | None = None,
     ) -> dict[str, Any]:
         """Resolve a free-text gene name or identifier to a canonical identity.
@@ -52,7 +54,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         (``HGNC:9008``), Ensembl gene id (``ENSG...``), NCBI/Entrez id (bare
         digits), or a UniProt accession, and returns the canonical
         ``{id, hgnc_id, approved_symbol, match_type}`` plus a ``resolve_with``
-        handoff naming the exact next call (``kgdb_get_gene`` with the
+        handoff naming the exact next call (``get_gene`` with the
         ``approved_symbol``). When the query matches multiple genes the tool
         returns an ``ambiguous_query`` error carrying the candidate ``choices``;
         an unknown query returns ``not_found``.
@@ -64,7 +66,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
 
         Returns:
             A dict with ``gene`` (the canonical identity) and ``resolve_with``
-            (the explicit handoff to ``kgdb_get_gene``), plus ``data_class`` and
+            (the explicit handoff to ``get_gene``), plus ``data_class`` and
             ``meta``.
         """
         mode = resolve_mode(response_mode)
@@ -75,11 +77,13 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.GENE_IDENTITY,
+            client=client,
             response_mode=mode,
         )
 
     @mcp.tool(
-        name="kgdb_search_genes",
+        name="search_genes",
+        output_schema=None,
         annotations={
             "title": "Search Genes (filtered)",
             "readOnlyHint": True,
@@ -87,7 +91,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_search_genes(
+    async def search_genes(
         query: str | None = None,
         tier: EvidenceTier | None = None,
         group: EvidenceGroup | None = None,
@@ -105,7 +109,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         filters, returning a page of hits each shaped to ``{id,
         approved_symbol, hgnc_id, evidence_score, evidence_tier, evidence_group,
         sources}`` (field-laddered by ``response_mode``) with a per-hit
-        ``resolve_with`` handoff to ``kgdb_get_gene``.
+        ``resolve_with`` handoff to ``get_gene``.
 
         Args:
             query: Free-text search over symbol / HGNC id / tier / group.
@@ -143,11 +147,13 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.GENE,
+            client=client,
             response_mode=mode,
         )
 
     @mcp.tool(
-        name="kgdb_get_gene",
+        name="get_gene",
+        output_schema=None,
         annotations={
             "title": "Get Gene (overview: score, tier, sources)",
             "readOnlyHint": True,
@@ -155,18 +161,21 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_gene(
-        gene_symbol: str,
+    async def get_gene(
+        gene_symbol: Annotated[str, Field(examples=["PKD1"])],
         response_mode: ResponseMode | None = None,
-        fields: list[str] | None = None,
+        fields: Annotated[
+            list[str] | None,
+            Field(examples=[["approved_symbol", "evidence_score"]]),
+        ] = None,
     ) -> dict[str, Any]:
         """Fetch a single gene's curated overview by approved symbol.
 
         Returns the gene's evidence score, tier, group, evidence count,
         contributing sources, score breakdown, and per-source scores
         (field-laddered by ``response_mode``: ``minimal`` = core score fields,
-        ``full`` = all). Obtain ``gene_symbol`` from ``kgdb_resolve_gene`` or
-        ``kgdb_search_genes``.
+        ``full`` = all). Obtain ``gene_symbol`` from ``resolve_gene`` or
+        ``search_genes``.
 
         Args:
             gene_symbol: The approved gene symbol (case-insensitive upstream).
@@ -188,11 +197,13 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 fields=fields,
             ),
             data_class=dataclass.GENE,
+            client=client,
             response_mode=mode,
         )
 
     @mcp.tool(
-        name="kgdb_get_gene_evidence",
+        name="get_gene_evidence",
+        output_schema=None,
         annotations={
             "title": "Get Gene Evidence (per-source scored)",
             "readOnlyHint": True,
@@ -200,9 +211,11 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_gene_evidence(
-        gene_symbol: str,
-        sources: list[str] | None = None,
+    async def get_gene_evidence(
+        gene_symbol: Annotated[str, Field(examples=["PKD1"])],
+        sources: Annotated[
+            list[str] | None, Field(examples=[["ClinGen", "PanelApp"]])
+        ] = None,
         response_mode: ResponseMode | None = None,
     ) -> dict[str, Any]:
         """Fetch per-source scored evidence records for a gene.
@@ -210,8 +223,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         Returns each evidence record as ``{source_name, source_detail,
         normalized_score, evidence_date, evidence_data}``. The bulky
         ``evidence_data`` JSONB is dropped in ``minimal``/``compact`` and kept in
-        ``standard``/``full``. Obtain ``gene_symbol`` from ``kgdb_resolve_gene``
-        or ``kgdb_search_genes``.
+        ``standard``/``full``. Obtain ``gene_symbol`` from ``resolve_gene``
+        or ``search_genes``.
 
         Args:
             gene_symbol: The approved gene symbol whose evidence is requested.
@@ -234,5 +247,6 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.EVIDENCE,
+            client=client,
             response_mode=mode,
         )

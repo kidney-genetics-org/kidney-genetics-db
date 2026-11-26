@@ -1,9 +1,10 @@
-"""Tests for the kgdb_get_interaction_partners tool (registration + behavior)."""
+"""Tests for the get_interaction_partners tool (registration + behavior)."""
 
 from __future__ import annotations
 
 import httpx
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -64,7 +65,7 @@ async def test_registers_with_readonly_hints() -> None:
     mcp = FastMCP("test")
     register(mcp, None)
     tools = await mcp.list_tools()
-    t = next(t for t in tools if t.name == "kgdb_get_interaction_partners")
+    t = next(t for t in tools if t.name == "get_interaction_partners")
     assert t.annotations.read_only_hint is True
     assert t.annotations.idempotent_hint is True
     assert t.annotations.open_world_hint is False
@@ -89,10 +90,10 @@ async def test_filters_ranks_and_attaches_resolve_with() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_interaction_partners",
+            "get_interaction_partners",
             {"gene_id": GENE_ID, "min_string_score": 400},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
 
         assert sc["data_class"] == INTERACTION
         assert sc["gene"] == GENE_BLOCK
@@ -105,7 +106,7 @@ async def test_filters_ranks_and_attaches_resolve_with() -> None:
         # resolve_with directive present and correct
         top = partners[0]
         assert top["resolve_with"] == {
-            "tool": "kgdb_get_gene",
+            "tool": "get_gene",
             "argument": "gene_symbol",
             "value": "TOPGENE",
         }
@@ -127,10 +128,10 @@ async def test_limit_caps_partner_count_with_signal() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_interaction_partners",
+            "get_interaction_partners",
             {"gene_id": GENE_ID, "limit": 5, "response_mode": "full"},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
         assert len(sc["partners"]) == 5
         # highest scores first
         assert sc["partners"][0]["string_score"] == 539
@@ -149,8 +150,8 @@ async def test_no_interactions_returns_empty_partners() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_interaction_partners", {"gene_id": GENE_ID})
-        sc = r.structured_content
+        r = await mcp.call_tool("get_interaction_partners", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
         assert sc["partners"] == []
         assert sc["summary"]["total_interactions"] == 0
     finally:
@@ -167,8 +168,8 @@ async def test_missing_string_ppi_record_handled() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_interaction_partners", {"gene_id": GENE_ID})
-        sc = r.structured_content
+        r = await mcp.call_tool("get_interaction_partners", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
         assert sc["partners"] == []
         assert sc["summary"] == {}
         assert sc["uri"] == "kidney-genetics://gene/PKD1"
@@ -187,10 +188,10 @@ async def test_budget_trims_partner_list() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_interaction_partners",
+            "get_interaction_partners",
             {"gene_id": GENE_ID, "limit": 60, "response_mode": "compact"},
         )
-        sc = r.structured_content
+        sc = unwrap(r.structured_content)
         assert sc["meta"]["truncated"] is True
         assert len(sc["partners"]) >= 1  # never emptied
     finally:
@@ -209,13 +210,13 @@ async def test_invalid_min_string_score_returns_invalid_input() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_interaction_partners",
+            "get_interaction_partners",
             {"gene_id": GENE_ID, "min_string_score": 5000},
         )
-        sc = r.structured_content
-        assert sc.get("is_error") is True
-        assert sc["error"]["code"] == "invalid_input"
-        assert sc["error"]["field"] == "min_string_score"
+        sc = unwrap(r.structured_content)
+        assert sc.get("success") is False
+        assert sc["error_code"] == "invalid_input"
+        assert sc["field"] == "min_string_score"
     finally:
         await client.aclose()
 
@@ -227,13 +228,13 @@ async def test_invalid_limit_returns_invalid_input() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_interaction_partners",
+            "get_interaction_partners",
             {"gene_id": GENE_ID, "limit": 0},
         )
-        sc = r.structured_content
-        assert sc.get("is_error") is True
-        assert sc["error"]["code"] == "invalid_input"
-        assert sc["error"]["field"] == "limit"
+        sc = unwrap(r.structured_content)
+        assert sc.get("success") is False
+        assert sc["error_code"] == "invalid_input"
+        assert sc["field"] == "limit"
     finally:
         await client.aclose()
 
@@ -247,9 +248,9 @@ async def test_not_found_propagates_error_envelope() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_interaction_partners", {"gene_id": GENE_ID})
-        sc = r.structured_content
-        assert sc.get("is_error") is True
-        assert sc["error"]["code"] == "not_found"
+        r = await mcp.call_tool("get_interaction_partners", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
+        assert sc.get("success") is False
+        assert sc["error_code"] == "not_found"
     finally:
         await client.aclose()

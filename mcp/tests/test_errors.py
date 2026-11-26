@@ -10,25 +10,32 @@ from kidney_genetics_mcp.services.errors import (
     ambiguous_query,
     invalid_input,
     not_found,
-    temporarily_unavailable,
+    upstream_unavailable,
 )
 
 
 def test_envelope_shape() -> None:
     err = McpToolError("invalid_input", "bad", field="tier", hint="use a tier")
     env = err.to_envelope()
-    assert env["schema_version"] == "1.0"
-    assert env["error"]["code"] == "invalid_input"
-    assert env["error"]["message"] == "bad"
-    assert env["error"]["field"] == "tier"
-    assert env["error"]["hint"] == "use a tier"
+    assert env["success"] is False
+    assert env["error_code"] == "invalid_input"
+    assert env["message"] == "bad"
+    assert env["retryable"] is False
+    assert env["field"] == "tier"
+    assert env["hint"] == "use a tier"
+
+
+def test_retryable_codes() -> None:
+    assert McpToolError("upstream_unavailable", "x").to_envelope()["retryable"]
+    assert McpToolError("rate_limited", "x").to_envelope()["retryable"]
+    assert not McpToolError("internal", "x").to_envelope()["retryable"]
 
 
 def test_none_details_dropped() -> None:
     err = McpToolError("not_found", "x", field=None, hint="h")
     env = err.to_envelope()
-    assert "field" not in env["error"]
-    assert env["error"]["hint"] == "h"
+    assert "field" not in env
+    assert env["hint"] == "h"
 
 
 def test_unknown_code_rejected() -> None:
@@ -36,12 +43,14 @@ def test_unknown_code_rejected() -> None:
         McpToolError("nope", "x")
 
 
-def test_four_codes() -> None:
+def test_closed_gts_codes() -> None:
     assert ERROR_CODES == {
         "invalid_input",
         "not_found",
         "ambiguous_query",
-        "temporarily_unavailable",
+        "upstream_unavailable",
+        "rate_limited",
+        "internal",
     }
 
 
@@ -50,5 +59,5 @@ def test_helpers() -> None:
     assert not_found("b").code == "not_found"
     amb = ambiguous_query("c", choices=[{"id": 1}])
     assert amb.code == "ambiguous_query"
-    assert amb.to_envelope()["error"]["choices"] == [{"id": 1}]
-    assert temporarily_unavailable("d").code == "temporarily_unavailable"
+    assert amb.to_envelope()["choices"] == [{"id": 1}]
+    assert upstream_unavailable("d").code == "upstream_unavailable"

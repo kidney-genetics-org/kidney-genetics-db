@@ -2,11 +2,11 @@
 
 Registers (all ``readOnlyHint``/``idempotentHint``/``openWorldHint=False``):
 
-- ``kgdb_get_database_stats`` — database-wide rollup (totals, quality,
+- ``get_database_stats`` — database-wide rollup (totals, quality,
   coverage, pairwise source overlaps). HEAVY tool (tighter rate limit).
-- ``kgdb_list_sources`` — merged annotation + data source provenance list
+- ``list_sources`` — merged annotation + data source provenance list
   (powers the citation provenance contract).
-- ``kgdb_get_release_citation`` — the current published data-release citation
+- ``get_release_citation`` — the current published data-release citation
   (recommended_citation + version + dataset DOI + software concept DOI).
 
 Each tool is thin: it declares typed params, resolves the response_mode, and
@@ -40,7 +40,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
     """
 
     @mcp.tool(
-        name="kgdb_get_database_stats",
+        name="get_database_stats",
+        output_schema=None,
         annotations={
             "title": "Get Kidney-Genetics Database Statistics",
             "readOnlyHint": True,
@@ -48,7 +49,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_database_stats(
+    async def get_database_stats(
         response_mode: ResponseMode | None = None,
     ) -> dict[str, Any]:
         """Get the database-wide statistics rollup for Kidney-Genetics-DB.
@@ -82,11 +83,13 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.STATISTICS,
+            client=client,
             response_mode=mode,
         )
 
     @mcp.tool(
-        name="kgdb_list_sources",
+        name="list_sources",
+        output_schema=None,
         annotations={
             "title": "List Kidney-Genetics Data Sources",
             "readOnlyHint": True,
@@ -94,7 +97,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_list_sources(
+    async def list_sources(
         response_mode: ResponseMode | None = None,
     ) -> dict[str, Any]:
         """List the data sources behind Kidney-Genetics-DB, with provenance.
@@ -105,7 +108,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         ``last_update``, and (in wider modes) per-source ``gene_count`` /
         ``evidence_count``. This list powers the citation provenance contract:
         cite each source's display name + version alongside the data-release
-        citation from ``kgdb_get_release_citation``.
+        citation from ``get_release_citation``.
 
         Field detail widens with ``response_mode``: ``minimal`` returns name +
         version; ``compact`` adds url + last_update; ``standard`` adds counts;
@@ -126,11 +129,13 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.SOURCE,
+            client=client,
             response_mode=mode,
         )
 
     @mcp.tool(
-        name="kgdb_get_release_citation",
+        name="get_release_citation",
+        output_schema=None,
         annotations={
             "title": "Get Kidney-Genetics Data-Release Citation",
             "readOnlyHint": True,
@@ -138,7 +143,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_release_citation(
+    async def get_release_citation(
         response_mode: ResponseMode | None = None,
     ) -> dict[str, Any]:
         """Get the citation for the current published Kidney-Genetics data release.
@@ -147,7 +152,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         ``recommended_citation`` (paste verbatim), the CalVer ``version``, the
         dataset ``doi``, and the software ``concept_doi`` — plus key release
         metadata and the export ``export_checksum`` when present. Cite this
-        alongside the per-source provenance from ``kgdb_list_sources``.
+        alongside the per-source provenance from ``list_sources``.
 
         Args:
             response_mode: Budget tier — ``"minimal"``, ``"compact"`` (default),
@@ -166,5 +171,6 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.RELEASE,
+            client=client,
             response_mode=mode,
         )
