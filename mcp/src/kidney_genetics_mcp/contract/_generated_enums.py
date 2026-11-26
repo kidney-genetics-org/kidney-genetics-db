@@ -62,7 +62,7 @@ GENE_SORT_FIELD_VALUES: tuple[str, ...] = (
 
 # --- source name lists (hard-coded from design spec §4) ---
 
-# 7 scored evidence sources (kgdb_get_gene_evidence)
+# 7 scored evidence sources (get_gene_evidence)
 EvidenceSource = Literal[
     "PanelApp", "HPO", "ClinGen", "GenCC", "PubTator", "DiagnosticPanels", "Literature"
 ]
@@ -76,7 +76,7 @@ EVIDENCE_SOURCE_VALUES: tuple[str, ...] = (
     "Literature",
 )
 
-# 10 descriptive annotation sources (kgdb_get_gene_annotations)
+# 10 descriptive annotation sources (get_gene_annotations)
 AnnotationSource = Literal[
     "hgnc",
     "gnomad",

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -17,6 +19,18 @@ from ..contract import (
 )
 from ..services.errors import McpToolError
 from .allowlist import assert_allowed
+
+#: Wall-clock times (epoch seconds) at which the data read in the current tool
+#: call was obtained from the API; a cache hit reports its original fetch time.
+#: ``run_tool`` sets a fresh list per call and reports ``_meta.retrieved_at``.
+FETCH_TIMES: ContextVar[list[float] | None] = ContextVar("FETCH_TIMES", default=None)
+
+
+def _note_fetch(fetched_at: float) -> None:
+    times = FETCH_TIMES.get()
+    if times is not None:
+        times.append(fetched_at)
+
 
 #: Map upstream query-parameter names → the contract enum that constrains them,
 #: so a 422 error envelope can surface ``allowed`` values and a calling LLM can
@@ -35,7 +49,8 @@ def _build_422_error(resp: httpx.Response) -> McpToolError:
     Parses the FastAPI validation body
     (``{"detail":[{"loc":[...],"msg":"...","input":...}]}``) to name the
     offending field and value, attaching ``field``, ``allowed`` (when the field
-    maps to a known contract enum), ``hint``, and the raw ``upstream_detail`` so
+    maps to a known contract enum) and a fixed ``hint`` (never the caller's value
+    or the upstream body, GTS-CORE-TXT-04) so
     a consuming model can correct its call without fetching raw schemas.
 
     Args:
@@ -55,35 +70,27 @@ def _build_422_error(resp: httpx.Response) -> McpToolError:
         first = detail[0]
         loc = first.get("loc") or []
         field = str(loc[-1]) if loc else "unknown"
-        upstream_msg = str(first.get("msg") or "value not permitted by the data API")
-        bad_value = first.get("input")
         allowed = _FIELD_ALLOWED.get(field)
-
-        if bad_value is not None:
-            message = f"invalid value {bad_value!r} for '{field}': {upstream_msg}"
-        else:
-            message = f"invalid value for '{field}': {upstream_msg}"
-
-        if allowed is not None:
-            hint = f"use one of the allowed values for '{field}'"
-        else:
-            hint = "check the parameter against kgdb_get_capabilities filterable_fields"
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,63}", field):
+            field = "unknown"
 
         return McpToolError(
             "invalid_input",
-            message,
+            "the data API rejected a parameter value",
             field=field,
-            allowed=allowed,
-            hint=hint,
-            upstream_detail=detail,
+            allowed_values=allowed,
+            hint=(
+                "use one of allowed_values"
+                if allowed is not None
+                else "check the parameter against get_capabilities filterable_fields"
+            ),
         )
 
     return McpToolError(
         "invalid_input",
         "the data API rejected the request parameters",
         field="unknown",
-        hint="check parameters against kgdb_get_capabilities filterable_fields",
-        upstream_detail=detail if detail is not None else body,
+        hint="check parameters against get_capabilities filterable_fields",
     )
 
 
@@ -116,7 +123,7 @@ class ApiClient:
         self._cache_ttl = cache_ttl
         self._cache_max_entries = max(cache_max_entries, 1)
         self._clock = clock
-        self._cache: dict[str, tuple[float, Any]] = {}
+        self._cache: dict[str, tuple[float, Any, float]] = {}
 
     async def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """GET an allowlisted path and return the parsed JSON body.
@@ -132,7 +139,7 @@ class ApiClient:
             PermissionError: If a ``GET`` on *path* is not on the allowlist.
             McpToolError: On 404 (``not_found``), 422/400/409
                 (``invalid_input``), 300 (``ambiguous_query``), or 5xx / other
-                4xx / network errors (``temporarily_unavailable``). Messages are
+                4xx / network errors (``upstream_unavailable``). Messages are
                 domain-framed and never echo the internal route/host.
         """
         assert_allowed("GET", path)
@@ -140,15 +147,16 @@ class ApiClient:
         now = self._clock()
         hit = self._cache.get(key)
         if hit and hit[0] > now:
+            _note_fetch(hit[2])
             return hit[1]
         try:
             resp = await self._client.get(path, params=params)
         except httpx.TimeoutException as exc:
             raise McpToolError(
-                "temporarily_unavailable", "upstream API timed out"
+                "upstream_unavailable", "upstream API timed out"
             ) from exc
         except httpx.HTTPError as exc:
-            raise McpToolError("temporarily_unavailable", "upstream API error") from exc
+            raise McpToolError("upstream_unavailable", "upstream API error") from exc
 
         if resp.status_code == 300:
             # Multiple candidates — surface the body's candidates as choices so
@@ -164,14 +172,14 @@ class ApiClient:
                 "not_found",
                 "the requested record was not found",
                 hint=(
-                    "verify the identifier via kgdb_resolve_gene or"
-                    " kgdb_search_genes before fetching"
+                    "verify the identifier via resolve_gene or"
+                    " search_genes before fetching"
                 ),
             )
         if resp.status_code == 422:
             raise _build_422_error(resp)
         if resp.status_code >= 500:
-            raise McpToolError("temporarily_unavailable", "upstream API unavailable")
+            raise McpToolError("upstream_unavailable", "upstream API unavailable")
         if 400 <= resp.status_code < 500:
             if resp.status_code in (400, 409):
                 raise McpToolError(
@@ -179,32 +187,35 @@ class ApiClient:
                     "the data API rejected the request parameters",
                     hint=(
                         "check the parameter values against"
-                        " kgdb_get_capabilities filterable_fields"
+                        " get_capabilities filterable_fields"
                     ),
                 )
             raise McpToolError(
-                "temporarily_unavailable",
+                "upstream_unavailable",
                 "the data API rejected the request",
             )
         resp.raise_for_status()
         data = resp.json()
-        self._store(key, now, data)
+        fetched_at = time.time()
+        self._store(key, now, data, fetched_at)
+        _note_fetch(fetched_at)
         return data
 
-    def _store(self, key: str, now: float, data: Any) -> None:
+    def _store(self, key: str, now: float, data: Any, fetched_at: float) -> None:
         """Cache *data* under *key*, dropping expired entries and keeping the bound.
 
         Args:
             key: The request cache key.
             now: The clock reading taken when the request started.
             data: The parsed response body to cache.
+            fetched_at: Wall-clock time the body was obtained from the API.
         """
         self._cache.pop(key, None)
-        for stale in [k for k, (expires, _) in self._cache.items() if expires <= now]:
+        for stale in [k for k, (expires, *_) in self._cache.items() if expires <= now]:
             del self._cache[stale]
         while len(self._cache) >= self._cache_max_entries:
             del self._cache[next(iter(self._cache))]  # oldest insertion first
-        self._cache[key] = (now + self._cache_ttl, data)
+        self._cache[key] = (now + self._cache_ttl, data, fetched_at)
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client."""

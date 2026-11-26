@@ -109,6 +109,7 @@ _EXPOSED_CONSUMED_TEMPLATES: tuple[str, ...] = (
     "/api/datasources/",
     "/api/releases/",
     "/api/curation/associations/",
+    "/version",
 )
 
 # Exposed domains the spec scopes the MCP to. Used to find detail endpoints that

@@ -1,4 +1,4 @@
-"""Tests for the kgdb_search_genes tool + search service."""
+"""Tests for the search_genes tool + search service."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -54,7 +55,7 @@ async def _get_tool(mcp: FastMCP, name: str) -> Any:
 async def test_search_tool_registered_readonly() -> None:
     mcp = FastMCP("test")
     register(mcp, None)
-    tool = await _get_tool(mcp, "kgdb_search_genes")
+    tool = await _get_tool(mcp, "search_genes")
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.idempotent_hint is True
     assert tool.annotations.open_world_hint is False
@@ -109,7 +110,7 @@ async def test_search_hits_have_resolve_with_and_pagination() -> None:
     first = result["genes"][0]
     assert first["approved_symbol"] == "PKD1"
     assert first["resolve_with"] == {
-        "tool": "kgdb_get_gene",
+        "tool": "get_gene",
         "argument": "gene_symbol",
         "value": "PKD1",
     }
@@ -150,7 +151,7 @@ async def test_search_invalid_tier_raises() -> None:
         await search_genes(None, tier="platinum")  # type: ignore[arg-type]
     assert exc.value.code == "invalid_input"
     assert exc.value.details["field"] == "tier"
-    assert "comprehensive_support" in exc.value.details["allowed"]
+    assert "comprehensive_support" in exc.value.details["allowed_values"]
 
 
 async def test_search_invalid_sort_raises() -> None:
@@ -169,8 +170,8 @@ async def test_search_tool_envelope() -> None:
     mcp = FastMCP("test")
     register(mcp, client)
     try:
-        tool = await _get_tool(mcp, "kgdb_search_genes")
-        out = await tool.fn(query="cyst", response_mode="compact")
+        tool = await _get_tool(mcp, "search_genes")
+        out = unwrap(await tool.fn(query="cyst", response_mode="compact"))
     finally:
         await client.aclose()
     assert out["data_class"] == dataclass.GENE

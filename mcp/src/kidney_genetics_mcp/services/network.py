@@ -1,6 +1,6 @@
 """Network service: STRING-PPI ranked interaction partners (local data).
 
-Backs ``kgdb_get_interaction_partners``. STRING physical-interaction partners
+Backs ``get_interaction_partners``. STRING physical-interaction partners
 for a gene are stored as a single ``string_ppi`` annotation record whose ``data``
 blob carries the per-partner list and degree/percentile summary. This service
 reads that local record (no live external STRING call, no graph build), filters
@@ -34,10 +34,10 @@ def _resolve_with(partner_symbol: str) -> dict[str, Any]:
         partner_symbol: The partner gene's HGNC symbol.
 
     Returns:
-        A ``resolve_with`` directive pointing at ``kgdb_get_gene``.
+        A ``resolve_with`` directive pointing at ``get_gene``.
     """
     return {
-        "tool": "kgdb_get_gene",
+        "tool": "get_gene",
         "argument": "gene_symbol",
         "value": partner_symbol,
     }
@@ -54,8 +54,8 @@ async def get_interaction_partners(
 
     Args:
         client: The shared :class:`ApiClient` instance.
-        gene_id: The numeric KGDB gene id (from ``kgdb_resolve_gene`` /
-            ``kgdb_search_genes``).
+        gene_id: The numeric KGDB gene id (from ``resolve_gene`` /
+            ``search_genes``).
         min_string_score: Minimum STRING combined score (0-1000) a partner must
             meet to be included. Defaults to ``400``.
         limit: Maximum number of partners to return after filtering/ranking.

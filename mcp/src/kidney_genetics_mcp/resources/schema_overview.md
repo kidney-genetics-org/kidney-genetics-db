@@ -28,9 +28,9 @@ canonical HGNC identity. Each gene carries:
 - **The list of contributing evidence sources** (`sources[]`).
 - **A score breakdown** — per-source contributions to the aggregate.
 
-Use `kgdb_get_gene` for the gene overview, `kgdb_get_gene_evidence` for the
-per-source scored evidence, and `kgdb_get_gene_annotations` /
-`kgdb_get_constraint_summary` for the descriptive (non-scored) annotations.
+Use `get_gene` for the gene overview, `get_gene_evidence` for the
+per-source scored evidence, and `get_gene_annotations` /
+`get_constraint_summary` for the descriptive (non-scored) annotations.
 
 ## The Evidence Score
 
@@ -63,12 +63,12 @@ prioritization.
 | `emerging_evidence` | Genes with emerging / preliminary evidence. |
 
 Both `evidence_tier` and `evidence_group` are valid filters on
-`kgdb_search_genes` (see `filterable_fields` in `kgdb_get_capabilities`).
+`search_genes` (see `filterable_fields` in `get_capabilities`).
 
 ## Evidence Sources (7 scored sources)
 
 These are the curated, **scored** evidence sources that feed the aggregate
-score. `kgdb_get_gene_evidence` returns one scored record per contributing
+score. `get_gene_evidence` returns one scored record per contributing
 source; `source_name` takes one of these exact values:
 
 | Source | What it contributes |
@@ -91,7 +91,7 @@ mention sample, not a cumulative mention count; use `publication_count` instead.
 
 These are the **descriptive, non-scored** annotation sources. They enrich a gene
 with functional, constraint, expression, and cross-reference data but do not
-contribute to the evidence score. `kgdb_get_gene_annotations` returns these;
+contribute to the evidence score. `get_gene_annotations` returns these;
 `source` takes one of these exact values:
 
 | Source | What it provides |
@@ -107,29 +107,29 @@ contribute to the evidence score. `kgdb_get_gene_annotations` returns these;
 | `descartes` | Descartes / fetal single-cell expression atlas. |
 | `hpo` | HPO descriptive gene–phenotype annotations. |
 
-`kgdb_get_constraint_summary` is a fast convenience view returning gnomAD
+`get_constraint_summary` is a fast convenience view returning gnomAD
 pLI / oe_lof plus NCBI / Ensembl / MANE identifiers without the full annotation
-payload. `kgdb_get_interaction_partners` returns the ranked STRING-PPI partners
+payload. `get_interaction_partners` returns the ranked STRING-PPI partners
 from local data (no live external call, no heavy graph build).
 
 The combined 17 sources (7 evidence + 10 annotation) are enumerated with their
-display name, version, URL, last-update, and record counts by `kgdb_list_sources`
+display name, version, URL, last-update, and record counts by `list_sources`
 — use it for provenance.
 
 ## Identifiers
 
 KGDB genes are addressable by several stable identifiers. Do not guess them;
-obtain a gene's canonical identity from `kgdb_resolve_gene` (free-text or any ID
-form) or `kgdb_search_genes`, then follow the returned handoff.
+obtain a gene's canonical identity from `resolve_gene` (free-text or any ID
+form) or `search_genes`, then follow the returned handoff.
 
 | Identifier | Form / example | Used by |
 |---|---|---|
 | `hgnc_id` | `HGNC:12614` (the canonical anchor). | resolve / search / overview. |
-| `approved_symbol` | HGNC-approved symbol, e.g. `PKD1`. | `kgdb_get_gene` (`gene_symbol`). |
+| `approved_symbol` | HGNC-approved symbol, e.g. `PKD1`. | `get_gene` (`gene_symbol`). |
 | `gene_id` | KGDB internal numeric gene id. | annotation / constraint / interaction tools. |
-| `ensembl` | Ensembl gene id, e.g. `ENSG00000008710`. | accepted by `kgdb_resolve_gene`. |
-| `ncbi` | NCBI/Entrez gene id (bare digits). | accepted by `kgdb_resolve_gene`. |
-| `uniprot` | UniProt accession, e.g. `P98161`. | accepted by `kgdb_resolve_gene`. |
+| `ensembl` | Ensembl gene id, e.g. `ENSG00000008710`. | accepted by `resolve_gene`. |
+| `ncbi` | NCBI/Entrez gene id (bare digits). | accepted by `resolve_gene`. |
+| `uniprot` | UniProt accession, e.g. `P98161`. | accepted by `resolve_gene`. |
 
 The annotation, constraint, and interaction tools take the KGDB `gene_id`
 (obtained via resolve/search). The gene overview and evidence tools take the
@@ -146,10 +146,10 @@ published release carries:
 - A `citation_text` to paste verbatim.
 - A `checksum` for integrity.
 
-`kgdb_get_release_citation` returns the current published release plus the
+`get_release_citation` returns the current published release plus the
 software **concept DOI** `10.5281/zenodo.19316248` (which always resolves to the
 latest software release archive). Cite BOTH the per-source version (from
-`kgdb_list_sources`) AND the data-release version + dataset DOI AND the software
+`list_sources`) AND the data-release version + dataset DOI AND the software
 concept DOI for any factual claim derived from a record.
 
 ## Data Provenance and Classes

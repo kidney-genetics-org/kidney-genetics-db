@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-#: The exactly four recoverable tool-error codes surfaced to MCP clients.
+#: The closed GTS error vocabulary (GeneFoundry response envelope v1.2).
 ERROR_CODES = {
     "invalid_input",
     "not_found",
     "ambiguous_query",
-    "temporarily_unavailable",
+    "upstream_unavailable",
+    "rate_limited",
+    "internal",
 }
+
+#: Codes a client may retry unchanged.
+RETRYABLE_CODES = frozenset({"upstream_unavailable", "rate_limited"})
 
 
 class McpToolError(Exception):
@@ -39,18 +44,20 @@ class McpToolError(Exception):
         self.details = {k: v for k, v in details.items() if v is not None}
 
     def to_envelope(self) -> dict[str, Any]:
-        """Return the JSON error envelope embedded in the tool result.
+        """Return the GTS error frame embedded in the tool result.
+
+        ``_meta`` (request id, timing, source) and the clinical-use flag are
+        added by the envelope middleware.
 
         Returns:
-            ``{"schema_version": "1.0", "error": {"code", "message", ...}}``.
+            ``{"success": False, "error_code", "message", "retryable", ...}``.
         """
         return {
-            "schema_version": "1.0",
-            "error": {
-                "code": self.code,
-                "message": self.message,
-                **self.details,
-            },
+            "success": False,
+            "error_code": self.code,
+            "message": self.message,
+            "retryable": self.code in RETRYABLE_CODES,
+            **self.details,
         }
 
 
@@ -95,14 +102,14 @@ def ambiguous_query(message: str, choices: list[Any]) -> McpToolError:
     return McpToolError("ambiguous_query", message, choices=choices)
 
 
-def temporarily_unavailable(message: str, **details: Any) -> McpToolError:
-    """Build a ``temporarily_unavailable`` error (transient upstream problem).
+def upstream_unavailable(message: str, **details: Any) -> McpToolError:
+    """Build a ``upstream_unavailable`` error (transient upstream problem).
 
     Args:
         message: Human-readable description (domain-framed, never a route).
         **details: Optional extra fields.
 
     Returns:
-        A populated :class:`McpToolError` with code ``temporarily_unavailable``.
+        A populated :class:`McpToolError` with code ``upstream_unavailable``.
     """
-    return McpToolError("temporarily_unavailable", message, **details)
+    return McpToolError("upstream_unavailable", message, **details)

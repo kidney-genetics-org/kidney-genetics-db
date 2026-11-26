@@ -84,6 +84,8 @@ _EXPOSED_PATHS: tuple[str, ...] = (
     "/api/datasources/",
     # releases
     "/api/releases/",
+    # API version (response-envelope _meta.data_version)
+    "/version",
 )
 
 # ---------------------------------------------------------------------------
@@ -358,12 +360,12 @@ def generate_contract(output_dir: Path) -> tuple[Path, Path, Path]:
         (
             "EvidenceSource",
             _EVIDENCE_SOURCES,
-            "7 scored evidence sources (kgdb_get_gene_evidence)",
+            "7 scored evidence sources (get_gene_evidence)",
         ),
         (
             "AnnotationSource",
             _ANNOTATION_SOURCES,
-            "10 descriptive annotation sources (kgdb_get_gene_annotations)",
+            "10 descriptive annotation sources (get_gene_annotations)",
         ),
     ]
     enums_out.write_text(_render_enums(described, source_lists), encoding="utf-8")

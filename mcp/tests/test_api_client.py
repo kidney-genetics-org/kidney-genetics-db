@@ -62,8 +62,10 @@ async def test_422_maps_to_invalid_input_with_field() -> None:
         err = exc.value
         assert err.code == "invalid_input"
         assert err.details["field"] == "tier"
-        assert err.details["allowed"] is not None
-        assert "platinum" in err.message
+        assert err.details["allowed_values"] is not None
+        # The caller's value is never echoed back (GTS-CORE-TXT-04).
+        assert "platinum" not in err.message
+        assert "upstream_detail" not in err.details
     finally:
         await client.aclose()
 
@@ -85,13 +87,13 @@ async def test_300_maps_to_ambiguous_query() -> None:
 
 
 @respx.mock
-async def test_500_maps_to_temporarily_unavailable() -> None:
+async def test_500_maps_to_upstream_unavailable() -> None:
     respx.get(f"{_BASE}/api/statistics/summary").mock(return_value=httpx.Response(503))
     client = ApiClient(base_url=_BASE)
     try:
         with pytest.raises(McpToolError) as exc:
             await client.get("/api/statistics/summary")
-        assert exc.value.code == "temporarily_unavailable"
+        assert exc.value.code == "upstream_unavailable"
     finally:
         await client.aclose()
 

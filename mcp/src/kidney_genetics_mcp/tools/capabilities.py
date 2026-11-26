@@ -1,4 +1,4 @@
-"""Tool module: kgdb_get_capabilities — server discovery and metadata."""
+"""Tool module: get_capabilities — server discovery and metadata."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def register(mcp: FastMCP, client: ApiClient | None) -> None:  # noqa: ARG001
-    """Register the kgdb_get_capabilities tool on the given FastMCP instance.
+    """Register the get_capabilities tool on the given FastMCP instance.
 
     Args:
         mcp: The FastMCP application instance to register the tool on.
@@ -25,7 +25,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:  # noqa: ARG001
     """
 
     @mcp.tool(
-        name="kgdb_get_capabilities",
+        name="get_capabilities",
+        output_schema=None,
         annotations={
             "title": "Kidney-Genetics: Capabilities & Tool Inventory",
             "readOnlyHint": True,
@@ -33,7 +34,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:  # noqa: ARG001
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_capabilities() -> dict[str, Any]:
+    async def get_capabilities() -> dict[str, Any]:
         """Return server capabilities, tool inventory, and operational metadata.
 
         Discover what the Kidney-Genetics-DB MCP server can do: canonical

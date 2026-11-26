@@ -1,10 +1,11 @@
-"""Tests for the kgdb_get_capabilities tool and its descriptor service."""
+"""Tests for the get_capabilities tool and its descriptor service."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import pytest
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.contract import (
@@ -15,22 +16,23 @@ from kidney_genetics_mcp.contract import (
     GENE_SORT_FIELD_VALUES,
 )
 from kidney_genetics_mcp.services.capabilities import build_capabilities
+from kidney_genetics_mcp.services.errors import ERROR_CODES
 from kidney_genetics_mcp.services.resources import register_resources
 from kidney_genetics_mcp.tools import capabilities as cap_tool
 
 _EXPECTED_TOOLS = {
-    "kgdb_get_capabilities",
-    "kgdb_resolve_gene",
-    "kgdb_search_genes",
-    "kgdb_get_gene",
-    "kgdb_get_gene_evidence",
-    "kgdb_get_gene_annotations",
-    "kgdb_get_constraint_summary",
-    "kgdb_get_interaction_partners",
-    "kgdb_get_database_stats",
-    "kgdb_list_sources",
-    "kgdb_get_release_citation",
-    "kgdb_list_curated_associations",
+    "get_capabilities",
+    "resolve_gene",
+    "search_genes",
+    "get_gene",
+    "get_gene_evidence",
+    "get_gene_annotations",
+    "get_constraint_summary",
+    "get_interaction_partners",
+    "get_database_stats",
+    "list_sources",
+    "get_release_citation",
+    "list_curated_associations",
 }
 
 
@@ -40,8 +42,8 @@ async def _call_capabilities() -> dict[str, Any]:
     # Resources must be registered so the descriptor can content-hash them.
     register_resources(mcp)
     cap_tool.register(mcp, None)
-    tool = await mcp.get_tool("kgdb_get_capabilities")
-    result: dict[str, Any] = await tool.fn()
+    tool = await mcp.get_tool("get_capabilities")
+    result: dict[str, Any] = unwrap(await tool.fn())
     return result
 
 
@@ -80,18 +82,18 @@ async def test_filterable_fields_populated_from_enums() -> None:
     ff = result["filterable_fields"]
 
     # search_genes: tier / group / source / sort sourced from contract enums.
-    search = ff["kgdb_search_genes"]
+    search = ff["search_genes"]
     assert search["tier"]["values"] == list(EVIDENCE_TIER_VALUES)
     assert search["group"]["values"] == list(EVIDENCE_GROUP_VALUES)
     assert search["source"]["values"] == list(EVIDENCE_SOURCE_VALUES)
     assert search["sort"]["values"] == list(GENE_SORT_FIELD_VALUES)
 
     # evidence sources enum.
-    evidence = ff["kgdb_get_gene_evidence"]
+    evidence = ff["get_gene_evidence"]
     assert evidence["sources"]["values"] == list(EVIDENCE_SOURCE_VALUES)
 
     # annotation sources enum.
-    annotations = ff["kgdb_get_gene_annotations"]
+    annotations = ff["get_gene_annotations"]
     assert annotations["source"]["values"] == list(ANNOTATION_SOURCE_VALUES)
 
 
@@ -130,12 +132,7 @@ async def test_payload_modes_have_char_budgets() -> None:
 async def test_error_codes_have_examples() -> None:
     result = await _call_capabilities()
     codes = result["error_codes"]
-    assert set(codes) == {
-        "invalid_input",
-        "not_found",
-        "ambiguous_query",
-        "temporarily_unavailable",
-    }
+    assert set(codes) == ERROR_CODES
     for code, body in codes.items():
         assert body["example"], f"{code} missing example"
 

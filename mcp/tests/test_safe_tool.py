@@ -15,7 +15,10 @@ async def test_success_attaches_meta_and_data_class() -> None:
     async def handler() -> dict[str, Any]:
         return {"gene": {"id": 1}}
 
-    out = await run_tool(handler, data_class=GENE, response_mode="compact")
+    envelope = await run_tool(handler, data_class=GENE, response_mode="compact")
+    assert envelope["success"] is True
+    assert envelope["_meta"] == {"source": "kgdb"}  # no client: no data provenance
+    out = envelope["result"]
     assert out["data_class"] == GENE
     assert out["gene"] == {"id": 1}
     assert out["meta"]["response_mode"] == "compact"
@@ -32,7 +35,7 @@ async def test_internal_channels_consumed() -> None:
             "_meta": {"applied_sort": "score"},
         }
 
-    out = await run_tool(handler, data_class=GENE, response_mode="full")
+    out = (await run_tool(handler, data_class=GENE, response_mode="full"))["result"]
     assert "_dropped" not in out
     assert "_meta" not in out
     assert out["meta"]["truncated"] is True
@@ -45,21 +48,21 @@ async def test_mcp_tool_error_caught() -> None:
         raise McpToolError("not_found", "no such gene", hint="resolve first")
 
     out = await run_tool(handler, data_class=GENE, response_mode="compact")
-    assert out["is_error"] is True
-    assert out["error"]["code"] == "not_found"
-    assert out["error"]["hint"] == "resolve first"
+    assert out["success"] is False
+    assert out["error_code"] == "not_found"
+    assert out["hint"] == "resolve first"
     assert "meta" not in out
 
 
-async def test_unexpected_error_mapped_to_temporarily_unavailable() -> None:
+async def test_unexpected_error_mapped_to_internal() -> None:
     async def handler() -> dict[str, Any]:
         raise RuntimeError("boom internal /api/secret")
 
     out = await run_tool(handler, data_class=GENE, response_mode="compact")
-    assert out["is_error"] is True
-    assert out["error"]["code"] == "temporarily_unavailable"
+    assert out["success"] is False
+    assert out["error_code"] == "internal"
     # internal detail must NOT leak
-    assert "secret" not in out["error"]["message"]
+    assert "secret" not in out["message"]
 
 
 if __name__ == "__main__":  # pragma: no cover

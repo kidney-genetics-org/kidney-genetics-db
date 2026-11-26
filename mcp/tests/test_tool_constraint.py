@@ -1,9 +1,10 @@
-"""Tests for the kgdb_get_constraint_summary tool (registration + behavior)."""
+"""Tests for the get_constraint_summary tool (registration + behavior)."""
 
 from __future__ import annotations
 
 import httpx
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -50,7 +51,7 @@ async def test_registers_with_readonly_hints() -> None:
     mcp = FastMCP("test")
     register(mcp, None)
     tools = await mcp.list_tools()
-    t = next(t for t in tools if t.name == "kgdb_get_constraint_summary")
+    t = next(t for t in tools if t.name == "get_constraint_summary")
     assert t.annotations.read_only_hint is True
     assert t.annotations.idempotent_hint is True
     assert t.annotations.open_world_hint is False
@@ -69,8 +70,8 @@ async def test_returns_flat_constraint_and_identifiers() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_constraint_summary", {"gene_id": GENE_ID})
-        sc = r.structured_content
+        r = await mcp.call_tool("get_constraint_summary", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
 
         assert sc["data_class"] == ANNOTATION
         assert sc["meta"]["response_mode"] == "compact"
@@ -103,8 +104,8 @@ async def test_uri_uses_symbol() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_constraint_summary", {"gene_id": GENE_ID})
-        assert r.structured_content["uri"] == "kidney-genetics://gene/PKD2"
+        r = await mcp.call_tool("get_constraint_summary", {"gene_id": GENE_ID})
+        assert unwrap(r.structured_content)["uri"] == "kidney-genetics://gene/PKD2"
     finally:
         await client.aclose()
 
@@ -124,8 +125,8 @@ async def test_missing_constraint_blocks_yield_nulls() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_constraint_summary", {"gene_id": GENE_ID})
-        sc = r.structured_content
+        r = await mcp.call_tool("get_constraint_summary", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
         assert sc["constraint"]["pli"] is None
         assert sc["identifiers"]["ncbi_gene_id"] is None
     finally:
@@ -140,10 +141,10 @@ async def test_response_mode_echoed_in_meta() -> None:
         mcp = FastMCP("test")
         register(mcp, client)
         r = await mcp.call_tool(
-            "kgdb_get_constraint_summary",
+            "get_constraint_summary",
             {"gene_id": GENE_ID, "response_mode": "full"},
         )
-        assert r.structured_content["meta"]["response_mode"] == "full"
+        assert unwrap(r.structured_content)["meta"]["response_mode"] == "full"
     finally:
         await client.aclose()
 
@@ -160,9 +161,9 @@ async def test_not_found_returns_error_envelope() -> None:
     try:
         mcp = FastMCP("test")
         register(mcp, client)
-        r = await mcp.call_tool("kgdb_get_constraint_summary", {"gene_id": GENE_ID})
-        sc = r.structured_content
-        assert sc.get("is_error") is True
-        assert sc["error"]["code"] == "not_found"
+        r = await mcp.call_tool("get_constraint_summary", {"gene_id": GENE_ID})
+        sc = unwrap(r.structured_content)
+        assert sc.get("success") is False
+        assert sc["error_code"] == "not_found"
     finally:
         await client.aclose()

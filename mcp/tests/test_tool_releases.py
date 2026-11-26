@@ -1,9 +1,10 @@
-"""Tests for the kgdb_get_release_citation tool + releases service."""
+"""Tests for the get_release_citation tool + releases service."""
 
 from __future__ import annotations
 
 import httpx
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -58,7 +59,7 @@ async def test_registers_with_readonly_hints() -> None:
     mcp: FastMCP = FastMCP("test")  # type: ignore[type-arg]
     register(mcp, None)
     tools = await mcp.list_tools()
-    tool = next(t for t in tools if t.name == "kgdb_get_release_citation")
+    tool = next(t for t in tools if t.name == "get_release_citation")
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.idempotent_hint is True
     assert tool.annotations.open_world_hint is False
@@ -68,10 +69,10 @@ async def test_registers_with_readonly_hints() -> None:
 async def test_citation_includes_concept_doi_and_checksum() -> None:
     respx.get(RELEASES).mock(return_value=httpx.Response(200, json=_RELEASES_RESPONSE))
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_release_citation", {})
+    r = await mcp.call_tool("get_release_citation", {})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     assert sc["data_class"] == RELEASE
     citation = sc["citation"]
     # latest published release is 2026.06
@@ -92,7 +93,7 @@ async def test_status_published_filter_forwarded() -> None:
         return_value=httpx.Response(200, json=_RELEASES_RESPONSE)
     )
     mcp, client = _make()
-    await mcp.call_tool("kgdb_get_release_citation", {})
+    await mcp.call_tool("get_release_citation", {})
     await client.aclose()
 
     url_str = str(route.calls.last.request.url)
@@ -105,12 +106,12 @@ async def test_no_published_release_returns_not_found() -> None:
         return_value=httpx.Response(200, json={"data": [], "meta": {"total": 0}})
     )
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_release_citation", {})
+    r = await mcp.call_tool("get_release_citation", {})
     await client.aclose()
 
-    sc = r.structured_content
-    assert sc.get("is_error") is True
-    assert sc["error"]["code"] == "not_found"
+    sc = unwrap(r.structured_content)
+    assert sc.get("success") is False
+    assert sc["error_code"] == "not_found"
 
 
 @respx.mock
@@ -122,10 +123,10 @@ async def test_citation_assembled_when_no_citation_text() -> None:
         )
     )
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_release_citation", {})
+    r = await mcp.call_tool("get_release_citation", {})
     await client.aclose()
 
-    sc = r.structured_content
+    sc = unwrap(r.structured_content)
     cite = sc["citation"]["recommended_citation"]
     assert "2026.03" in cite
     assert "doi:10.5281/zenodo.1111111" in cite
@@ -136,9 +137,9 @@ async def test_citation_assembled_when_no_citation_text() -> None:
 async def test_upstream_error_mapped() -> None:
     respx.get(RELEASES).mock(return_value=httpx.Response(500))
     mcp, client = _make()
-    r = await mcp.call_tool("kgdb_get_release_citation", {})
+    r = await mcp.call_tool("get_release_citation", {})
     await client.aclose()
 
-    sc = r.structured_content
-    assert sc.get("is_error") is True
-    assert sc["error"]["code"] == "temporarily_unavailable"
+    sc = unwrap(r.structured_content)
+    assert sc.get("success") is False
+    assert sc["error_code"] == "upstream_unavailable"

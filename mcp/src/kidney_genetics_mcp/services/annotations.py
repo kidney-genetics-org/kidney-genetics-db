@@ -1,8 +1,8 @@
 """Annotation service: descriptive annotations + fast constraint summary.
 
-Backs ``kgdb_get_gene_annotations`` and ``kgdb_get_constraint_summary``. Both
+Backs ``get_gene_annotations`` and ``get_constraint_summary``. Both
 KGDB annotation endpoints key by the *numeric* gene database id (not the symbol),
-which the caller obtains from ``kgdb_resolve_gene`` / ``kgdb_search_genes``.
+which the caller obtains from ``resolve_gene`` / ``search_genes``.
 
 The annotations endpoint returns a per-source map of records whose ``data`` is a
 free-form JSONB blob that varies wildly by source (and can be very large). The
@@ -118,8 +118,8 @@ async def get_gene_annotations(
 
     Args:
         client: The shared :class:`ApiClient` instance.
-        gene_id: The numeric KGDB gene id (from ``kgdb_resolve_gene`` /
-            ``kgdb_search_genes``).
+        gene_id: The numeric KGDB gene id (from ``resolve_gene`` /
+            ``search_genes``).
         source: Optional annotation-source filter; must be one of
             :data:`~kidney_genetics_mcp.contract.ANNOTATION_SOURCE_VALUES` when
             given.
@@ -141,7 +141,7 @@ async def get_gene_annotations(
             "invalid_input",
             f"source must be one of {list(ANNOTATION_SOURCE_VALUES)}",
             field="source",
-            allowed=sorted(ANNOTATION_SOURCE_VALUES),
+            allowed_values=sorted(ANNOTATION_SOURCE_VALUES),
         )
 
     params: dict[str, Any] | None = {"source": source} if source else None
@@ -197,8 +197,8 @@ async def get_constraint_summary(
 
     Args:
         client: The shared :class:`ApiClient` instance.
-        gene_id: The numeric KGDB gene id (from ``kgdb_resolve_gene`` /
-            ``kgdb_search_genes``).
+        gene_id: The numeric KGDB gene id (from ``resolve_gene`` /
+            ``search_genes``).
         response_mode: One of ``minimal``, ``compact``, ``standard``, ``full``.
             The summary is small and fixed, so the mode is echoed in meta but the
             field set does not change.

@@ -78,8 +78,8 @@ def test_overview_covers_sources_and_score() -> None:
 
 def test_tool_guide_covers_workflow_and_safety() -> None:
     body = load_resource(_TOOL_GUIDE).lower()
-    assert "kgdb_resolve_gene" in body
-    assert "kgdb_get_release_citation" in body
+    assert "resolve_gene" in body
+    assert "get_release_citation" in body
     assert "research use only" in body
     assert "10.5281/zenodo.19316248" in body  # concept DOI in citation contract
     assert "response_mode" in body

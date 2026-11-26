@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..client.api_client import ApiClient
+from .resolve import symbol_for
 
 #: Public list endpoint (allowlisted, read-only).
 _LIST_PATH = "/api/curation/associations/"
@@ -64,7 +65,9 @@ async def list_curated_associations(
     # ponytail: one page of 1000 (the API maximum); page through meta.total if published
     # curations ever exceed that
     params: dict[str, Any] = {"limit": 1000}
+    resolved_from = None
     if gene_symbol:
+        gene_symbol, resolved_from = await symbol_for(client, gene_symbol)
         params["gene_symbol"] = gene_symbol
     payload: Any = await client.get(_LIST_PATH, params=params)
     rows = payload.get("data", []) if isinstance(payload, dict) else []
@@ -79,4 +82,7 @@ async def list_curated_associations(
     fields = _FIELDS.get(response_mode)
     if fields is not None:
         rows = [{k: r.get(k) for k in fields} for r in rows]
-    return {"associations": rows, "total": len(rows)}
+    out: dict[str, Any] = {"associations": rows, "total": len(rows)}
+    if resolved_from:
+        out["resolved_from"] = resolved_from
+    return out

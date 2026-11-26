@@ -1,16 +1,17 @@
 """Annotations-family tools: descriptive annotations, constraint, interactions.
 
-Registers ``kgdb_get_gene_annotations``, ``kgdb_get_constraint_summary``, and
-``kgdb_get_interaction_partners``. All three key by the *numeric* gene database
-id (not the symbol); callers obtain it from ``kgdb_resolve_gene`` /
-``kgdb_search_genes``.
+Registers ``get_gene_annotations``, ``get_constraint_summary``, and
+``get_interaction_partners``. All three key by the *numeric* gene database
+id (not the symbol); callers obtain it from ``resolve_gene`` /
+``search_genes``.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from pydantic import Field
 
 import kidney_genetics_mcp.services.annotations as annotations_service
 import kidney_genetics_mcp.services.network as network
@@ -32,7 +33,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
     """
 
     @mcp.tool(
-        name="kgdb_get_gene_annotations",
+        name="get_gene_annotations",
+        output_schema=None,
         annotations={
             "title": "Get Gene Descriptive Annotations",
             "readOnlyHint": True,
@@ -40,8 +42,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_gene_annotations(
-        gene_id: int,
+    async def get_gene_annotations(
+        gene_id: Annotated[int, Field(examples=[196])],
         source: AnnotationSource | None = None,
         response_mode: ResponseMode | None = None,
     ) -> dict[str, Any]:
@@ -54,7 +56,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         ``updated_at`` timestamp.
 
         ``gene_id`` is the NUMERIC KGDB gene database id — obtain it from
-        ``kgdb_resolve_gene`` or ``kgdb_search_genes`` (it is NOT the gene
+        ``resolve_gene`` or ``search_genes`` (it is NOT the gene
         symbol or HGNC id).
 
         Token discipline: ``response_mode`` controls how much of each record's
@@ -65,7 +67,7 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
 
         Args:
             gene_id: The numeric KGDB gene database id (from
-                ``kgdb_resolve_gene`` / ``kgdb_search_genes``).
+                ``resolve_gene`` / ``search_genes``).
             source: Optional annotation-source filter (one of the 10 sources).
                 Omit to return every source.
             response_mode: Response verbosity — ``minimal``, ``compact``,
@@ -84,11 +86,13 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.ANNOTATION,
+            client=client,
             response_mode=mode,
         )
 
     @mcp.tool(
-        name="kgdb_get_constraint_summary",
+        name="get_constraint_summary",
+        output_schema=None,
         annotations={
             "title": "Get Gene Constraint Summary",
             "readOnlyHint": True,
@@ -96,8 +100,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_constraint_summary(
-        gene_id: int,
+    async def get_constraint_summary(
+        gene_id: Annotated[int, Field(examples=[196])],
         response_mode: ResponseMode | None = None,
     ) -> dict[str, Any]:
         """Return the fast gnomAD-constraint summary for a gene by numeric id.
@@ -110,11 +114,11 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         and MANE Select transcript).
 
         ``gene_id`` is the NUMERIC KGDB gene database id — obtain it from
-        ``kgdb_resolve_gene`` or ``kgdb_search_genes``.
+        ``resolve_gene`` or ``search_genes``.
 
         Args:
             gene_id: The numeric KGDB gene database id (from
-                ``kgdb_resolve_gene`` / ``kgdb_search_genes``).
+                ``resolve_gene`` / ``search_genes``).
             response_mode: Response verbosity — ``minimal``, ``compact``,
                 ``standard``, or ``full``. The summary is small and fixed, so the
                 mode is echoed in ``meta`` but the field set does not change.
@@ -132,11 +136,13 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.ANNOTATION,
+            client=client,
             response_mode=mode,
         )
 
     @mcp.tool(
-        name="kgdb_get_interaction_partners",
+        name="get_interaction_partners",
+        output_schema=None,
         annotations={
             "title": "Get STRING Interaction Partners",
             "readOnlyHint": True,
@@ -144,8 +150,8 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
             "openWorldHint": False,
         },
     )
-    async def kgdb_get_interaction_partners(
-        gene_id: int,
+    async def get_interaction_partners(
+        gene_id: Annotated[int, Field(examples=[196])],
         min_string_score: int = 400,
         limit: int = 25,
         response_mode: ResponseMode | None = None,
@@ -156,16 +162,16 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
         (no live external call, no graph build), filters partners by STRING
         combined score, ranks them descending by score, and returns the top
         partners. Each partner carries a ``resolve_with`` directive pointing at
-        ``kgdb_get_gene`` so the partner symbol can be chased back into the gene
+        ``get_gene`` so the partner symbol can be chased back into the gene
         tools. A ``summary`` block reports the gene's total interaction count,
         PPI degree, and PPI percentile when present.
 
         ``gene_id`` is the NUMERIC KGDB gene database id — obtain it from
-        ``kgdb_resolve_gene`` or ``kgdb_search_genes``.
+        ``resolve_gene`` or ``search_genes``.
 
         Args:
             gene_id: The numeric KGDB gene database id (from
-                ``kgdb_resolve_gene`` / ``kgdb_search_genes``).
+                ``resolve_gene`` / ``search_genes``).
             min_string_score: Minimum STRING combined score (0-1000) a partner
                 must meet to be included. Defaults to ``400``.
             limit: Maximum number of partners to return. Defaults to ``25``.
@@ -186,5 +192,6 @@ def register(mcp: FastMCP, client: ApiClient | None) -> None:
                 response_mode=mode,
             ),
             data_class=dataclass.INTERACTION,
+            client=client,
             response_mode=mode,
         )

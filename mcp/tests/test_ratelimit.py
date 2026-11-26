@@ -52,11 +52,11 @@ def _frozen_limiter(**kwargs: Any) -> RateLimiter:
 
 async def test_failing_redis_falls_back_to_local_global_bucket() -> None:
     local = _frozen_limiter()
-    local_allowed = sum([await local.allow("kgdb_get_gene") for _ in range(30)])
+    local_allowed = sum([await local.allow("get_gene") for _ in range(30)])
 
     failing = _frozen_limiter()
     failing._redis = _FailingRedis()
-    failing_allowed = sum([await failing.allow("kgdb_get_gene") for _ in range(30)])
+    failing_allowed = sum([await failing.allow("get_gene") for _ in range(30)])
 
     assert local_allowed == 20
     assert failing_allowed == local_allowed
@@ -67,7 +67,7 @@ async def test_slow_redis_does_not_block_the_event_loop() -> None:
     redis = _GatedRedis()
     limiter._redis = redis
     middleware = RateLimitMiddleware(limiter)
-    context: Any = SimpleNamespace(message=SimpleNamespace(name="kgdb_get_gene"))
+    context: Any = SimpleNamespace(message=SimpleNamespace(name="get_gene"))
 
     async def call_next(_context: Any) -> str:
         return "ok"

@@ -25,6 +25,8 @@ _ALLOW: list[re.Pattern[str]] = [
     re.compile(r"^/api/releases/?$"),
     # Public list of published curations only (#437); workflow and writes stay denied
     re.compile(r"^/api/curation/associations/?$"),
+    # Public component versions: the envelope's ``_meta.data_version``
+    re.compile(r"^/version$"),
 ]
 
 #: Explicit deny guards (defense-in-depth; these also fail the catch-all below).

@@ -21,14 +21,53 @@ boundary is a code-enforced allowlist of side-effect-free `GET` paths plus
 origin validation.
 
 The server is **standalone** (it ships and runs independently, like the HNF1B-db
-and SysNDD MCP servers) but is **GeneFoundry-fleet-compatible**: tool prefixing,
-response/error envelopes, the capabilities-hash convention, the citation +
-safety contract, and the MCP resources all match the GeneFoundry "-link" fleet,
-so it can be federated into the `genefoundry` meta-router later with no rework.
+and SysNDD MCP servers) and follows the Genetics Tool Server specification
+(GTS v1, Core level), checked with
+[gts-conformance](https://github.com/berntpopp/gts-conformance). A gateway or
+MCP host mounts it with a registry entry and no code change:
+
+| | |
+|---|---|
+| Endpoint | `POST /mcp` (Streamable HTTP, stateless, JSON responses); `/` is kept as an alias |
+| `serverInfo.name` | `kgdb-mcp` (version = package version) |
+| Namespace token | `kgdb` — a gateway exposes the tools as `kgdb_<tool>` |
+| Entry points | `resolve_gene`, `get_gene` |
+
+**Response envelope** ([GeneFoundry response envelope v1.2](https://github.com/berntpopp/genefoundry-envelope)).
+Every tool returns `structuredContent` mirrored as JSON text:
+
+```json
+{
+  "success": true,
+  "result": { "...": "the tool's payload, with data_class and meta" },
+  "_meta": {
+    "source": "kgdb",
+    "data_version": "0.33.3",
+    "retrieved_at": "2026-11-26T18:36:26Z",
+    "request_id": "…",
+    "elapsed_ms": 187.9
+  },
+  "unsafe_for_clinical_use": true
+}
+```
+
+Size bound (GTS-CORE-TXT-03, not attested): list fields are trimmed to the
+`response_mode` character budget and the cut is reported in `result.meta` as
+`truncated: true` with a `dropped_summary`; a single record is never cut, so
+one oversized record is not bounded.
+
+`data_version` is the version of the live KGDB API that served the data (the
+API serves the current database, not a data release; cite the release with
+`get_release_citation`). An error sets MCP `isError` and returns
+`{"success": false, "error_code", "message", "retryable", "field",
+"allowed_values" | "example", "hint", "_meta"}`, with `error_code` one of
+`invalid_input`, `not_found`, `ambiguous_query`, `upstream_unavailable`,
+`rate_limited`, `internal`. Messages are fixed strings and never echo the
+caller's input or an upstream error body.
 
 ---
 
-## Tools (11)
+## Tools (12)
 
 Every tool is annotated `readOnlyHint=True`, `idempotentHint=True`,
 `openWorldHint=False`. Tools that return records accept a `response_mode`
@@ -37,25 +76,26 @@ token cost — start `compact` and widen only if needed.
 
 | Tool | One-line purpose |
 |---|---|
-| `kgdb_get_capabilities` | Return server capabilities: tool inventory, `filterable_fields`, payload modes, limits, identifiers, citation contract, error codes, safety, resources, and a deterministic `capabilities_version` hash. Recommended (not required) for cold-session orientation; a warm client compares `capabilities_version` to skip re-fetching. |
-| `kgdb_resolve_gene` | Resolve free text or any supported identifier (HGNC ID, Ensembl `ENSG`, NCBI gene ID, UniProt accession, symbol, alias) to the canonical `{id, hgnc_id, approved_symbol}`. Ambiguous input returns `ambiguous_query` with `choices`. |
-| `kgdb_search_genes` | Filtered gene search: `query`, `tier`, `group`, `min_score`/`max_score`, `min_count`/`max_count`, `source`, `sort`, `page`, `page_size`. Returns id, symbol, hgnc_id, evidence_score, evidence_tier, evidence_group, sources. |
-| `kgdb_get_gene` | Gene overview by symbol: score, evidence_tier, evidence_group, sources, score_breakdown, source_scores. |
-| `kgdb_get_gene_evidence` | Per-source scored evidence (7 evidence sources): source_name, source_detail, normalized_score, evidence_date, and mode-projected evidence data. |
-| `kgdb_get_gene_annotations` | Descriptive annotations (10 annotation sources) for a resolved `gene_id`, optionally filtered by `source`. |
-| `kgdb_get_constraint_summary` | Fast pLI / oe_lof constraint summary plus NCBI / Ensembl / MANE identifiers for a `gene_id`. |
-| `kgdb_get_interaction_partners` | STRING-PPI ranked interaction partners from local data (no graph build). Params: `gene_id`, `min_string_score`, `limit`. |
-| `kgdb_get_database_stats` | Dashboard rollup: totals, coverage, quality, and source overlaps. |
-| `kgdb_list_sources` | The 17 data sources with display_name, version, url, last_update, and counts. Powers provenance. |
-| `kgdb_get_release_citation` | Current published data release: version (CalVer), dataset DOI, citation_text, and checksum, plus the software concept DOI. |
+| `get_capabilities` | Return server capabilities: tool inventory, `filterable_fields`, payload modes, limits, identifiers, citation contract, error codes, safety, resources, and a deterministic `capabilities_version` hash. Recommended (not required) for cold-session orientation; a warm client compares `capabilities_version` to skip re-fetching. |
+| `resolve_gene` | Resolve free text or any supported identifier (HGNC ID, Ensembl `ENSG`, NCBI gene ID, UniProt accession, symbol, alias) to the canonical `{id, hgnc_id, approved_symbol}`. Ambiguous input returns `ambiguous_query` with `choices`. |
+| `search_genes` | Filtered gene search: `query`, `tier`, `group`, `min_score`/`max_score`, `min_count`/`max_count`, `source`, `sort`, `page`, `page_size`. Returns id, symbol, hgnc_id, evidence_score, evidence_tier, evidence_group, sources. |
+| `get_gene` | Gene overview by symbol: score, evidence_tier, evidence_group, sources, score_breakdown, source_scores. |
+| `get_gene_evidence` | Per-source scored evidence (7 evidence sources): source_name, source_detail, normalized_score, evidence_date, and mode-projected evidence data. |
+| `get_gene_annotations` | Descriptive annotations (10 annotation sources) for a resolved `gene_id`, optionally filtered by `source`. |
+| `get_constraint_summary` | Fast pLI / oe_lof constraint summary plus NCBI / Ensembl / MANE identifiers for a `gene_id`. |
+| `get_interaction_partners` | STRING-PPI ranked interaction partners from local data (no graph build). Params: `gene_id`, `min_string_score`, `limit`. |
+| `get_database_stats` | Dashboard rollup: totals, coverage, quality, and source overlaps. |
+| `list_sources` | The 17 data sources with display_name, version, url, last_update, and counts. Powers provenance. |
+| `get_release_citation` | Current published data release: version (CalVer), dataset DOI, citation_text, and checksum, plus the software concept DOI. |
+| `list_curated_associations` | Published expert-reviewed gene–disease associations (optionally by `gene_symbol` and `relationship_type`); separate from the evidence score. |
 
-The resolution chain is explicit: `kgdb_resolve_gene` / `kgdb_search_genes`
+The resolution chain is explicit: `resolve_gene` / `search_genes`
 return a typed identity with a `resolve_with: {tool, argument, value}` hint per
 hit, so the model never loses the chain to the detail tools. Tools that take
-`gene_id` obtain it from `kgdb_resolve_gene` or `kgdb_search_genes`.
+`gene_id` obtain it from `resolve_gene` or `search_genes`.
 
 **Deferred (v1.1, listed in capabilities `exclusions` as not-yet-available):**
-`kgdb_build_network` / `kgdb_cluster_network` (heavy igraph) and `kgdb_enrich_go`
+`build_network` / `cluster_network` (heavy igraph) and `enrich_go`
 (external Enrichr — also gated by the no-external-calls posture).
 
 ---
@@ -91,13 +131,19 @@ cd mcp && uv sync --locked --group dev
 ```
 
 `make mcp` runs from the repository root. The server listens on
-`http://localhost:8789` by default and expects the backend API on
+`http://localhost:8789/mcp` by default and expects the backend API on
 `http://localhost:8000`; start it with `make backend`.
 
 | Endpoint | Description |
 |---|---|
-| `http://localhost:8789` | MCP Streamable HTTP endpoint |
-| `http://localhost:8789/health` | Liveness probe (`{"status": "ok"}`) |
+| `http://localhost:8789/mcp` | MCP Streamable HTTP endpoint (`/` is an alias) |
+| `http://localhost:8789/health` | Liveness probe (`status`, `name`, `version`, `transport`, `path`) |
+
+Against the public API instead of a local backend:
+
+```bash
+cd mcp && KGDB_MCP_API_BASE_URL=https://kidney-genetics.org uv run kidney-genetics-mcp
+```
 
 ### Docker
 
@@ -177,9 +223,9 @@ carries a `recommended_citation` — paste it **verbatim**; do not paraphrase or
 fabricate it. Citations combine:
 
 - **Per-source provenance** — source display name + version from
-  `kgdb_list_sources`.
+  `list_sources`.
 - **The current data release** — data-release version (CalVer) + dataset DOI
-  from `kgdb_get_release_citation` (`citation_text`).
+  from `get_release_citation` (`citation_text`).
 - **The software archive** — Kidney-Genetics-DB concept DOI
   `10.5281/zenodo.19316248` (always resolves to the latest release).
 

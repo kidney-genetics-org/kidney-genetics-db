@@ -47,6 +47,7 @@ from ._generated_paths import (
     GENES_RESOLVE,
     RELEASES,
     STATISTICS_SUMMARY,
+    VERSION,
 )
 
 __all__ = [
@@ -62,6 +63,7 @@ __all__ = [
     "STATISTICS_SUMMARY",
     "DATASOURCES",
     "RELEASES",
+    "VERSION",
     # enum Literal aliases
     "EvidenceTier",
     "EvidenceGroup",

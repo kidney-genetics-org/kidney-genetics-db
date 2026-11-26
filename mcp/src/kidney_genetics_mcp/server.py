@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import re
+import time
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
 import mcp.types as mt
+import uvicorn
 from fastmcp import FastMCP
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from fastmcp.server.middleware import CallNext, MiddlewareContext
@@ -18,34 +23,46 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.routing import Route
 from starlette.types import ASGIApp
 
+from kidney_genetics_mcp import __version__
 from kidney_genetics_mcp.client.api_client import _FIELD_ALLOWED, ApiClient
 from kidney_genetics_mcp.config import Settings, get_settings
 from kidney_genetics_mcp.server_ratelimit import RateLimiter, set_limiter
 from kidney_genetics_mcp.services import resources
 from kidney_genetics_mcp.services.errors import McpToolError
+from kidney_genetics_mcp.services.safe_tool import SOURCE
 from kidney_genetics_mcp.tools import register_all
+
+#: ``serverInfo.name`` (GTS-CORE-VER-01); the namespace token is ``kgdb``.
+SERVER_NAME = "kgdb-mcp"
+
+#: The Streamable HTTP path (GTS-CORE-TRN-01). ``/`` stays as an alias for
+#: clients configured with the bare origin.
+MCP_PATH = "/mcp"
+
+_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]{0,63}")
 
 SERVER_INSTRUCTIONS = """\
 Kidney-Genetics-DB MCP server — read-only access to curated kidney-disease gene
 evidence, scores, descriptive annotations, and provenance for research.
 
 Workflow primer:
-  1. `kgdb_get_capabilities` is RECOMMENDED for orientation in a new/cold
+  1. `get_capabilities` is RECOMMENDED for orientation in a new/cold
      session (tool inventory, payload modes, filterable fields, citation
      contract) but is OPTIONAL: tools with enum-constrained filters advertise
      them in `filterable_fields`, so many valid calls can be constructed
      directly. A warm client compares the `capabilities_version` content hash
      and skips re-fetching when unchanged.
-  2. Use `kgdb_resolve_gene` (free-text/ID → canonical identity) or
-     `kgdb_search_genes` (filtered search) to obtain stable gene identifiers.
-  3. Fetch detail with `kgdb_get_gene`, `kgdb_get_gene_evidence`,
-     `kgdb_get_gene_annotations`, `kgdb_get_constraint_summary`, or
-     `kgdb_get_interaction_partners`.
-  4. Cite provenance with `kgdb_list_sources` and the current data release via
-     `kgdb_get_release_citation`.
-  5. `kgdb_list_curated_associations` returns published expert-reviewed
+  2. Use `resolve_gene` (free-text/ID → canonical identity) or
+     `search_genes` (filtered search) to obtain stable gene identifiers.
+  3. Fetch detail with `get_gene`, `get_gene_evidence`,
+     `get_gene_annotations`, `get_constraint_summary`, or
+     `get_interaction_partners`.
+  4. Cite provenance with `list_sources` and the current data release via
+     `get_release_citation`.
+  5. `list_curated_associations` returns published expert-reviewed
      gene-disease associations; they are separate from the evidence score.
   5. Use `response_mode` (minimal | compact | standard | full) to control token
      cost; start compact and widen only if needed.
@@ -105,107 +122,135 @@ class RateLimitMiddleware(FastMCPMiddleware):
             call_next: The downstream handler to invoke when allowed.
 
         Returns:
-            A ``temporarily_unavailable`` :class:`ToolResult` when the budget is
+            A ``rate_limited`` :class:`ToolResult` when the budget is
             exhausted, otherwise the downstream result.
         """
         tool_name: str = context.message.name
         if not await self._limiter.allow(tool_name):
-            error_payload: dict[str, Any] = {
-                "schema_version": "1.0",
-                "error": {
-                    "code": "temporarily_unavailable",
-                    "message": (
-                        f"Rate limit exceeded for tool '{tool_name}'. "
-                        "Please retry after a short delay."
-                    ),
-                },
-                "is_error": True,
-            }
+            error_payload = McpToolError(
+                "rate_limited",
+                "Rate limit exceeded. Please retry after a short delay.",
+            ).to_envelope()
             return ToolResult(structured_content=error_payload)
         return await call_next(context)
 
 
-def _validation_error_envelope(exc: ValidationError, tool_name: str) -> dict[str, Any]:
-    """Translate a pydantic argument-validation error into the clean envelope.
+def _param_hints(prop: dict[str, Any]) -> dict[str, Any]:
+    """``allowed_values`` (an enum) or ``example`` from one input-schema property."""
+    for branch in [prop, *prop.get("anyOf", [])]:
+        if isinstance(branch, dict) and branch.get("enum"):
+            return {"allowed_values": list(branch["enum"])}
+    examples = prop.get("examples")
+    return {"example": examples[0]} if examples else {}
+
+
+def _validation_error_envelope(
+    exc: ValidationError, schema: dict[str, Any]
+) -> dict[str, Any]:
+    """Translate a pydantic argument-validation error into the error frame.
 
     FastMCP validates tool arguments with pydantic inside ``tool.run`` (enum/
-    ``Literal`` mismatches, unexpected keyword arguments). This maps the first
-    error into the same ``{schema_version, error, is_error}`` envelope the
-    service layer produces, naming the offending field, its allowed values (when
-    it maps to a contract enum), and an actionable hint.
+    ``Literal`` mismatches, missing or unexpected arguments). The first error
+    becomes ``invalid_input`` naming the parameter (``field``) with its
+    ``allowed_values`` or an ``example`` (GTS-CORE-ERR-03). Messages are fixed
+    strings: the caller's value is never echoed (GTS-CORE-TXT-04).
 
     Args:
         exc: The pydantic validation error raised during argument coercion.
-        tool_name: The tool that was called (for the message).
+        schema: The tool's input schema.
 
     Returns:
-        The error envelope dict with ``is_error: True``.
+        The ``success: false`` error frame.
     """
     errors = exc.errors()
     first: dict[str, Any] = dict(errors[0]) if errors else {}
     loc = first.get("loc") or ()
     field = str(loc[-1]) if loc else "unknown"
     etype = str(first.get("type") or "")
-    allowed = _FIELD_ALLOWED.get(field)
+    properties: dict[str, Any] = schema.get("properties") or {}
 
     if "unexpected_keyword" in etype or "extra_forbidden" in etype:
-        message = f"unknown parameter {field!r} for tool {tool_name!r}"
-        hint = (
-            "check kgdb_get_capabilities filterable_fields for the exact"
-            " parameter names this tool accepts"
-        )
+        message = "unknown parameter; allowed_values lists the accepted parameters"
+        details: dict[str, Any] = {"allowed_values": sorted(properties)}
     else:
-        bad_value = first.get("input")
-        raw_msg = str(first.get("msg") or "value not permitted")
-        if bad_value is not None and not isinstance(bad_value, dict):
-            message = f"invalid value {bad_value!r} for {field!r}: {raw_msg}"
+        if etype.startswith("missing"):
+            message = "a required parameter is missing"
         else:
-            message = f"invalid value for {field!r}: {raw_msg}"
-        hint = (
-            f"use one of the allowed values for {field!r}"
+            message = "invalid parameter value"
+        allowed = _FIELD_ALLOWED.get(field)
+        details = (
+            {"allowed_values": allowed}
             if allowed
-            else "check kgdb_get_capabilities filterable_fields"
+            else _param_hints(properties.get(field) or {})
         )
-
-    err = McpToolError(
+    if not _IDENTIFIER.fullmatch(field):
+        field = "<redacted>"  # a caller-supplied name that is not an identifier
+    return McpToolError(
         "invalid_input",
         message,
         field=field,
-        allowed=allowed,
-        hint=hint,
+        hint="correct the parameter (see allowed_values or example), then retry",
+        **details,
+    ).to_envelope()
+
+
+def _finalize(envelope: dict[str, Any], start: float) -> ToolResult:
+    """Stamp request ``_meta`` and the clinical-use flag; mirror as JSON text.
+
+    Args:
+        envelope: A success or error frame (``success`` set).
+        start: ``time.perf_counter()`` at the start of the call.
+
+    Returns:
+        The :class:`ToolResult`, with MCP ``isError`` on a ``success: false``.
+    """
+    meta = envelope.setdefault("_meta", {})
+    meta.setdefault("source", SOURCE)
+    meta["request_id"] = uuid.uuid4().hex
+    meta["elapsed_ms"] = round((time.perf_counter() - start) * 1000, 1)
+    envelope["unsafe_for_clinical_use"] = True
+    return ToolResult(
+        content=[mt.TextContent(type="text", text=json.dumps(envelope, default=str))],
+        structured_content=envelope,
+        is_error=envelope.get("success") is not True,
     )
-    envelope = err.to_envelope()
-    envelope["is_error"] = True
-    return envelope
 
 
-class ErrorEnvelopeMiddleware(FastMCPMiddleware):
-    """Map raw argument-validation errors into the clean tool-result envelope."""
+class EnvelopeMiddleware(FastMCPMiddleware):
+    """Return every tool result as the GTS envelope (v1.2) with MCP ``isError``."""
 
     async def on_call_tool(
         self,
         context: MiddlewareContext[mt.CallToolRequestParams],
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
-        """Catch argument-validation errors and wrap them in the envelope.
+        """Finalize the envelope and map argument errors to ``invalid_input``.
 
         Args:
             context: The middleware context carrying the tool call parameters.
             call_next: The downstream handler to invoke.
 
         Returns:
-            The downstream :class:`ToolResult`, or an ``invalid_input`` envelope
-            when argument validation fails.
+            The finalized :class:`ToolResult`.
         """
+        start = time.perf_counter()
         try:
-            return await call_next(context)
+            result = await call_next(context)
         except FastMCPValidationError as exc:
             # FastMCP wraps argument errors; a pydantic error raised inside a tool
             # body is a server bug, not the caller's invalid_input.
             if not isinstance(exc.__cause__, ValidationError):
                 raise
-            envelope = _validation_error_envelope(exc.__cause__, context.message.name)
-            return ToolResult(structured_content=envelope)
+            schema: dict[str, Any] = {}
+            fctx = context.fastmcp_context
+            if fctx is not None:
+                tool = await fctx.fastmcp.get_tool(context.message.name)
+                schema = dict(getattr(tool, "parameters", None) or {})
+            return _finalize(_validation_error_envelope(exc.__cause__, schema), start)
+        envelope = result.structured_content
+        if not isinstance(envelope, dict) or "success" not in envelope:
+            return result
+        return _finalize(envelope, start)
 
 
 class OriginValidationMiddleware(BaseHTTPMiddleware):
@@ -280,22 +325,33 @@ def build_app(settings: Settings | None = None) -> FastMCP:
             await limiter.aclose()
 
     mcp: FastMCP = FastMCP(
-        "Kidney-Genetics-DB", instructions=SERVER_INSTRUCTIONS, lifespan=lifespan
+        SERVER_NAME,
+        version=__version__,
+        instructions=SERVER_INSTRUCTIONS,
+        lifespan=lifespan,
     )
+    mcp.add_middleware(EnvelopeMiddleware())
     mcp.add_middleware(RateLimitMiddleware(limiter))
-    mcp.add_middleware(ErrorEnvelopeMiddleware())
     register_all(mcp, client)
     resources.register_resources(mcp)
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> Response:  # noqa: ARG001
-        return JSONResponse({"status": "ok"})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "name": SERVER_NAME,
+                "version": __version__,
+                "transport": "streamable-http",
+                "path": MCP_PATH,
+            }
+        )
 
     return mcp
 
 
 def build_http_app(settings: Settings | None = None) -> Starlette:
-    """Build the ASGI app with Origin validation middleware applied.
+    """Build the ASGI app: MCP at ``/mcp`` (and ``/``) behind Origin validation.
 
     Args:
         settings: Optional settings override; loaded from the environment when
@@ -307,7 +363,7 @@ def build_http_app(settings: Settings | None = None) -> Starlette:
     settings = settings or get_settings()
     mcp = build_app(settings)
     app: Starlette = mcp.http_app(
-        path="/",
+        path=MCP_PATH,
         stateless_http=True,
         json_response=True,
         middleware=[
@@ -316,6 +372,13 @@ def build_http_app(settings: Settings | None = None) -> Starlette:
                 allowed_origins=settings.allowed_origins,
             )
         ],
+    )
+    endpoint = next(
+        r for r in app.routes if isinstance(r, Route) and r.path == MCP_PATH
+    )
+    # The bare origin served MCP before /mcp existed; keep it for those clients.
+    app.router.routes.append(
+        Route("/", endpoint=endpoint.endpoint, methods=sorted(endpoint.methods or ()))
     )
     return app
 
@@ -323,21 +386,7 @@ def build_http_app(settings: Settings | None = None) -> Starlette:
 def main() -> None:
     """Run the Kidney-Genetics-DB MCP server over HTTP transport."""
     settings = get_settings()
-    mcp = build_app(settings)
-    mcp.run(
-        transport="http",
-        host=settings.host,
-        port=settings.port,
-        path="/",
-        stateless_http=True,
-        json_response=True,
-        middleware=[
-            Middleware(
-                OriginValidationMiddleware,
-                allowed_origins=settings.allowed_origins,
-            )
-        ],
-    )
+    uvicorn.run(build_http_app(settings), host=settings.host, port=settings.port)
 
 
 if __name__ == "__main__":

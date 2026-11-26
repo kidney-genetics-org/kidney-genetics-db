@@ -1,4 +1,4 @@
-"""Tests for the kgdb_get_gene_evidence tool + evidence service."""
+"""Tests for the get_gene_evidence tool + evidence service."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
+from _envelope import unwrap
 from fastmcp import FastMCP
 
 from kidney_genetics_mcp.client.api_client import ApiClient
@@ -53,7 +54,7 @@ async def _get_tool(mcp: FastMCP, name: str) -> Any:
 async def test_evidence_tool_registered_readonly() -> None:
     mcp = FastMCP("test")
     register(mcp, None)
-    tool = await _get_tool(mcp, "kgdb_get_gene_evidence")
+    tool = await _get_tool(mcp, "get_gene_evidence")
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.idempotent_hint is True
     assert tool.annotations.open_world_hint is False
@@ -133,8 +134,8 @@ async def test_evidence_tool_envelope() -> None:
     mcp = FastMCP("test")
     register(mcp, client)
     try:
-        tool = await _get_tool(mcp, "kgdb_get_gene_evidence")
-        out = await tool.fn(gene_symbol="PKD1", response_mode="compact")
+        tool = await _get_tool(mcp, "get_gene_evidence")
+        out = unwrap(await tool.fn(gene_symbol="PKD1", response_mode="compact"))
     finally:
         await client.aclose()
     assert out["data_class"] == dataclass.EVIDENCE
